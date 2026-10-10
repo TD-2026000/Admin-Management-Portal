@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Admin Management Portal</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -24,7 +25,10 @@ body{
   display:none!important;
 }
 
-/* LOGIN */
+/* =========================
+   LOGIN
+========================= */
+
 #loginPage{
   min-height:100vh;
   display:flex;
@@ -106,14 +110,23 @@ body{
   background:#084db2;
 }
 
+.btn-primary:disabled{
+  opacity:.6;
+  cursor:not-allowed;
+}
+
 .error{
   color:#dc2626;
   font-size:14px;
   text-align:center;
   margin-top:12px;
+  line-height:1.5;
 }
 
-/* ADMIN */
+/* =========================
+   ADMIN
+========================= */
+
 #adminPage{
   min-height:100vh;
 }
@@ -176,7 +189,10 @@ body{
   margin:25px auto;
 }
 
-/* CARDS */
+/* =========================
+   STATS
+========================= */
+
 .stats{
   display:grid;
   grid-template-columns:repeat(5,1fr);
@@ -202,7 +218,10 @@ body{
   font-weight:bold;
 }
 
-/* NAV */
+/* =========================
+   NAV
+========================= */
+
 .tabs{
   display:flex;
   gap:10px;
@@ -229,7 +248,10 @@ body{
   color:white;
 }
 
-/* PANELS */
+/* =========================
+   PANELS
+========================= */
+
 .panel{
   background:white;
   border-radius:16px;
@@ -257,7 +279,10 @@ body{
   min-width:250px;
 }
 
-/* TABLE */
+/* =========================
+   TABLE
+========================= */
+
 .table-wrap{
   overflow-x:auto;
 }
@@ -344,7 +369,10 @@ th{
   color:#6b7280;
 }
 
-/* MODAL */
+/* =========================
+   MODAL
+========================= */
+
 .modal{
   position:fixed;
   inset:0;
@@ -405,7 +433,10 @@ th{
   flex:1;
 }
 
-/* TOAST */
+/* =========================
+   TOAST
+========================= */
+
 .toast{
   position:fixed;
   right:25px;
@@ -418,14 +449,20 @@ th{
   z-index:200;
 }
 
-/* MOBILE */
+/* =========================
+   MOBILE
+========================= */
+
 @media(max-width:1100px){
+
   .stats{
     grid-template-columns:repeat(3,1fr);
   }
+
 }
 
 @media(max-width:700px){
+
   .topbar{
     height:auto;
     padding:15px;
@@ -454,9 +491,11 @@ th{
     width:100%;
     min-width:0;
   }
+
 }
 
 @media(max-width:450px){
+
   .stats{
     grid-template-columns:1fr;
   }
@@ -464,65 +503,101 @@ th{
   .brand h2{
     font-size:17px;
   }
+
 }
 </style>
 </head>
 
 <body>
 
-<!-- LOGIN -->
+<!-- =========================
+     LOGIN
+========================= -->
+
 <section id="loginPage">
 
   <div class="login-box">
 
-    <div class="login-logo">AM</div>
+    <div class="login-logo">
+      AM
+    </div>
 
-    <h1>Admin Management Portal</h1>
+    <h1>
+      Admin Management Portal
+    </h1>
 
-    <p>Administrator access only</p>
+    <p>
+      Administrator access only
+    </p>
 
     <div class="input-group">
-      <label>Email</label>
+
+      <label>
+        Email
+      </label>
+
       <input
         type="email"
         id="loginEmail"
         placeholder="Enter admin email"
+        autocomplete="username"
       >
+
     </div>
 
     <div class="input-group">
-      <label>Password</label>
+
+      <label>
+        Password
+      </label>
+
       <input
         type="password"
         id="loginPassword"
         placeholder="Enter password"
+        autocomplete="current-password"
       >
+
     </div>
 
     <button
       class="btn btn-primary"
+      id="loginButton"
       onclick="adminLogin()"
     >
       LOGIN
     </button>
 
-    <div id="loginError" class="error"></div>
+    <div
+      id="loginError"
+      class="error"
+    ></div>
 
   </div>
 
 </section>
 
 
-<!-- ADMIN PAGE -->
-<section id="adminPage" class="hidden">
+<!-- =========================
+     ADMIN PAGE
+========================= -->
+
+<section
+  id="adminPage"
+  class="hidden"
+>
 
   <header class="topbar">
 
     <div class="brand">
 
-      <div class="brand-icon">AM</div>
+      <div class="brand-icon">
+        AM
+      </div>
 
-      <h2>Admin Management Portal</h2>
+      <h2>
+        Admin Management Portal
+      </h2>
 
     </div>
 
@@ -548,62 +623,93 @@ th{
   <main class="container">
 
     <!-- STATS -->
+
     <section class="stats">
 
       <div class="stat-card">
-        <div class="stat-title">TOTAL TEACHERS</div>
+
+        <div class="stat-title">
+          TOTAL TEACHERS
+        </div>
+
         <div
           class="stat-number"
           id="totalTeachers"
         >
           0
         </div>
+
       </div>
 
+
       <div class="stat-card">
-        <div class="stat-title">PENDING PAYMENTS</div>
+
+        <div class="stat-title">
+          PENDING PAYMENTS
+        </div>
+
         <div
           class="stat-number"
           id="pendingPayments"
         >
           0
         </div>
+
       </div>
 
+
       <div class="stat-card">
-        <div class="stat-title">ACTIVE SUBSCRIPTIONS</div>
+
+        <div class="stat-title">
+          ACTIVE SUBSCRIPTIONS
+        </div>
+
         <div
           class="stat-number"
           id="activeSubscriptions"
         >
           0
         </div>
+
       </div>
 
+
       <div class="stat-card">
-        <div class="stat-title">EXPIRING SOON</div>
+
+        <div class="stat-title">
+          EXPIRING SOON
+        </div>
+
         <div
           class="stat-number"
           id="expiringSoon"
         >
           0
         </div>
+
       </div>
 
+
       <div class="stat-card">
-        <div class="stat-title">EXPIRED</div>
+
+        <div class="stat-title">
+          EXPIRED
+        </div>
+
         <div
           class="stat-number"
           id="expiredSubscriptions"
         >
           0
         </div>
+
       </div>
 
     </section>
 
 
     <!-- TABS -->
+
     <nav class="tabs">
 
       <button
@@ -638,6 +744,7 @@ th{
 
 
     <!-- DASHBOARD -->
+
     <section
       id="dashboardTab"
       class="tab-content"
@@ -646,7 +753,10 @@ th{
       <div class="panel">
 
         <div class="panel-header">
-          <h2>Recent Payment Submissions</h2>
+
+          <h2>
+            Recent Payment Submissions
+          </h2>
 
           <button
             class="btn view"
@@ -654,6 +764,7 @@ th{
           >
             VIEW ALL
           </button>
+
         </div>
 
         <div class="table-wrap">
@@ -661,6 +772,7 @@ th{
           <table>
 
             <thead>
+
               <tr>
                 <th>Teacher</th>
                 <th>Email</th>
@@ -669,14 +781,20 @@ th{
                 <th>Date</th>
                 <th>Status</th>
               </tr>
+
             </thead>
 
             <tbody id="recentPaymentsTable">
+
               <tr>
-                <td colspan="6" class="empty">
+                <td
+                  colspan="6"
+                  class="empty"
+                >
                   No payment submissions yet.
                 </td>
               </tr>
+
             </tbody>
 
           </table>
@@ -689,7 +807,11 @@ th{
       <div class="panel">
 
         <div class="panel-header">
-          <h2>Subscription Alerts</h2>
+
+          <h2>
+            Subscription Alerts
+          </h2>
+
         </div>
 
         <div id="subscriptionAlerts">
@@ -706,6 +828,7 @@ th{
 
 
     <!-- PAYMENTS -->
+
     <section
       id="paymentsTab"
       class="tab-content hidden"
@@ -715,7 +838,9 @@ th{
 
         <div class="panel-header">
 
-          <h2>Payment Submissions</h2>
+          <h2>
+            Payment Submissions
+          </h2>
 
           <input
             class="search"
@@ -748,7 +873,10 @@ th{
             <tbody id="paymentsTable">
 
               <tr>
-                <td colspan="8" class="empty">
+                <td
+                  colspan="8"
+                  class="empty"
+                >
                   No payment submissions yet.
                 </td>
               </tr>
@@ -765,6 +893,7 @@ th{
 
 
     <!-- TEACHERS -->
+
     <section
       id="teachersTab"
       class="tab-content hidden"
@@ -774,7 +903,9 @@ th{
 
         <div class="panel-header">
 
-          <h2>Registered Teachers</h2>
+          <h2>
+            Registered Teachers
+          </h2>
 
           <input
             class="search"
@@ -804,7 +935,10 @@ th{
             <tbody id="teachersTable">
 
               <tr>
-                <td colspan="5" class="empty">
+                <td
+                  colspan="5"
+                  class="empty"
+                >
                   No teachers found.
                 </td>
               </tr>
@@ -821,6 +955,7 @@ th{
 
 
     <!-- SUBSCRIPTIONS -->
+
     <section
       id="subscriptionsTab"
       class="tab-content hidden"
@@ -830,7 +965,9 @@ th{
 
         <div class="panel-header">
 
-          <h2>Subscription Management</h2>
+          <h2>
+            Subscription Management
+          </h2>
 
         </div>
 
@@ -854,7 +991,10 @@ th{
             <tbody id="subscriptionsTable">
 
               <tr>
-                <td colspan="6" class="empty">
+                <td
+                  colspan="6"
+                  class="empty"
+                >
                   No subscription records yet.
                 </td>
               </tr>
@@ -874,7 +1014,10 @@ th{
 </section>
 
 
-<!-- VIEW PAYMENT MODAL -->
+<!-- =========================
+     PAYMENT MODAL
+========================= -->
+
 <div
   id="paymentModal"
   class="modal hidden"
@@ -888,7 +1031,9 @@ th{
 
     <div class="modal-header">
 
-      <h2>Payment Details</h2>
+      <h2>
+        Payment Details
+      </h2>
 
       <button
         class="close"
@@ -932,9 +1077,9 @@ th{
 
 <script>
 
-/* =========================
-   SUPABASE
-========================= */
+/* =====================================================
+   SUPABASE CONFIGURATION
+===================================================== */
 
 const SUPABASE_URL =
   'https://ibhmimpmeftzkrtzhkmp.supabase.co';
@@ -945,41 +1090,63 @@ const SUPABASE_PUBLISHABLE_KEY =
 const ADMIN_EMAIL =
   'teacherdanyeal@gmail.com';
 
+
+/* =====================================================
+   IMPORTANT:
+   SEPARATE AUTH STORAGE FOR ADMIN PORTAL
+===================================================== */
+
 const supabaseClient =
   window.supabase.createClient(
     SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY
+    SUPABASE_PUBLISHABLE_KEY,
+    {
+      auth:{
+        storageKey:'admin-management-portal-auth',
+        persistSession:true,
+        autoRefreshToken:true,
+        detectSessionInUrl:false
+      }
+    }
   );
 
 
-/* =========================
+/* =====================================================
    DATA
-========================= */
+===================================================== */
 
 let paymentRecords = [];
 let teacherRecords = [];
 let subscriptionRecords = [];
 
 
-/* =========================
+/* =====================================================
    LOGIN
-========================= */
+===================================================== */
 
 async function adminLogin(){
 
   const email =
-    document.getElementById('loginEmail')
-      .value.trim()
+    document
+      .getElementById('loginEmail')
+      .value
+      .trim()
       .toLowerCase();
 
   const password =
-    document.getElementById('loginPassword')
+    document
+      .getElementById('loginPassword')
       .value;
 
   const error =
-    document.getElementById('loginError');
+    document
+      .getElementById('loginError');
 
-  error.textContent = '';
+  const button =
+    document
+      .getElementById('loginButton');
+
+  error.textContent='';
 
   if(!email || !password){
 
@@ -997,70 +1164,122 @@ async function adminLogin(){
     return;
   }
 
-  const { data, error:loginError } =
+  button.disabled=true;
+  button.textContent='LOGGING IN...';
+
+  try{
+
+    const {
+      data,
+      error:loginError
+    } =
     await supabaseClient.auth.signInWithPassword({
-      email,
-      password
+      email:email,
+      password:password
     });
 
-  if(loginError){
+    if(loginError){
+
+      console.error(
+        'Supabase login error:',
+        loginError
+      );
+
+      error.textContent =
+        loginError.message ||
+        'Unable to login.';
+
+      return;
+    }
+
+    if(!data || !data.user){
+
+      error.textContent =
+        'Unable to verify admin account.';
+
+      return;
+    }
+
+    if(
+      !data.user.email ||
+      data.user.email.toLowerCase() !==
+      ADMIN_EMAIL
+    ){
+
+      await supabaseClient.auth.signOut();
+
+      error.textContent =
+        'Access denied. Admin account only.';
+
+      return;
+    }
+
+    showAdminPortal(data.user);
+
+  }catch(err){
+
+    console.error(err);
 
     error.textContent =
-      loginError.message;
+      err?.message ||
+      'Unexpected login error.';
 
-    return;
+  }finally{
+
+    button.disabled=false;
+    button.textContent='LOGIN';
+
   }
-
-  if(!data.user){
-
-    error.textContent =
-      'Unable to verify admin account.';
-
-    return;
-  }
-
-  if(
-    data.user.email.toLowerCase() !==
-    ADMIN_EMAIL
-  ){
-
-    await supabaseClient.auth.signOut();
-
-    error.textContent =
-      'Access denied.';
-
-    return;
-  }
-
-  showAdminPortal(data.user);
 
 }
 
 
-/* =========================
+/* =====================================================
    SESSION
-========================= */
+===================================================== */
 
 async function checkAdminSession(){
 
-  const {
-    data
-  } =
-  await supabaseClient.auth.getSession();
+  try{
 
-  const user =
-    data?.session?.user;
+    const {
+      data,
+      error
+    } =
+    await supabaseClient.auth.getSession();
 
-  if(
-    user &&
-    user.email &&
-    user.email.toLowerCase() === ADMIN_EMAIL
-  ){
+    if(error){
 
-    showAdminPortal(user);
+      console.error(
+        'Session error:',
+        error
+      );
 
-  }else{
+      showLogin();
+      return;
+    }
 
+    const user =
+      data?.session?.user;
+
+    if(
+      user &&
+      user.email &&
+      user.email.toLowerCase() ===
+      ADMIN_EMAIL
+    ){
+
+      showAdminPortal(user);
+
+    }else{
+
+      showLogin();
+
+    }
+
+  }catch(err){
+
+    console.error(err);
     showLogin();
 
   }
@@ -1068,9 +1287,9 @@ async function checkAdminSession(){
 }
 
 
-/* =========================
-   SHOW / HIDE
-========================= */
+/* =====================================================
+   SHOW LOGIN
+===================================================== */
 
 function showLogin(){
 
@@ -1085,6 +1304,10 @@ function showLogin(){
 }
 
 
+/* =====================================================
+   SHOW ADMIN
+===================================================== */
+
 function showAdminPortal(user){
 
   document
@@ -1097,25 +1320,41 @@ function showAdminPortal(user){
 
   document
     .getElementById('adminEmailDisplay')
-    .textContent = user.email;
+    .textContent =
+    user.email || ADMIN_EMAIL;
 
   loadAllData();
 
 }
 
 
+/* =====================================================
+   LOGOUT
+===================================================== */
+
 async function adminLogout(){
 
-  await supabaseClient.auth.signOut();
+  try{
+
+    await supabaseClient.auth.signOut();
+
+  }catch(err){
+
+    console.error(
+      'Logout error:',
+      err
+    );
+
+  }
 
   showLogin();
 
 }
 
 
-/* =========================
+/* =====================================================
    TABS
-========================= */
+===================================================== */
 
 function showTab(tab,button){
 
@@ -1125,9 +1364,16 @@ function showTab(tab,button){
       el.classList.add('hidden')
     );
 
-  document
-    .getElementById(tab + 'Tab')
-    .classList.remove('hidden');
+  const section =
+    document.getElementById(
+      tab + 'Tab'
+    );
+
+  if(section){
+
+    section.classList.remove('hidden');
+
+  }
 
   document
     .querySelectorAll('.tab')
@@ -1136,7 +1382,9 @@ function showTab(tab,button){
     );
 
   if(button){
+
     button.classList.add('active');
+
   }
 
 }
@@ -1144,26 +1392,39 @@ function showTab(tab,button){
 
 function showTabById(tab){
 
-  const button =
-    [...document.querySelectorAll('.tab')]
-      .find(btn =>
+  const buttons =
+    [...document.querySelectorAll('.tab')];
+
+  let button=null;
+
+  if(tab === 'payments'){
+
+    button =
+      buttons.find(btn =>
         btn.textContent
           .toLowerCase()
-          .includes(
-            tab === 'payments'
-              ? 'payment'
-              : tab
-          )
+          .includes('payment')
       );
+
+  }else{
+
+    button =
+      buttons.find(btn =>
+        btn.textContent
+          .toLowerCase()
+          .includes(tab)
+      );
+
+  }
 
   showTab(tab,button);
 
 }
 
 
-/* =========================
-   LOAD DATA
-========================= */
+/* =====================================================
+   LOAD ALL DATA
+===================================================== */
 
 async function loadAllData(){
 
@@ -1178,19 +1439,11 @@ async function loadAllData(){
 }
 
 
-/* =========================
+/* =====================================================
    PAYMENTS
-========================= */
+===================================================== */
 
 async function loadPayments(){
-
-  /*
-    Table name:
-    subscription_payments
-
-    This table will be created
-    in the next setup step.
-  */
 
   const {
     data,
@@ -1206,19 +1459,18 @@ async function loadPayments(){
   if(error){
 
     console.log(
-      'Payment table not ready:',
+      'Payment table:',
       error.message
     );
 
-    paymentRecords = [];
+    paymentRecords=[];
 
     renderPayments();
 
     return;
   }
 
-  paymentRecords =
-    data || [];
+  paymentRecords=data || [];
 
   renderPayments();
 
@@ -1239,7 +1491,7 @@ function renderPayments(){
 
   if(!paymentRecords.length){
 
-    table.innerHTML = `
+    table.innerHTML=`
       <tr>
         <td colspan="8" class="empty">
           No payment submissions yet.
@@ -1247,7 +1499,7 @@ function renderPayments(){
       </tr>
     `;
 
-    recent.innerHTML = `
+    recent.innerHTML=`
       <tr>
         <td colspan="6" class="empty">
           No payment submissions yet.
@@ -1260,97 +1512,99 @@ function renderPayments(){
 
 
   table.innerHTML =
-    paymentRecords.map(payment => {
+    paymentRecords
+      .map(payment => {
 
-      const status =
-        String(
-          payment.status || 'PENDING'
-        ).toUpperCase();
+        const status =
+          String(
+            payment.status || 'PENDING'
+          ).toUpperCase();
 
-      return `
-        <tr>
+        return `
+          <tr>
 
-          <td>
-            ${escapeHtml(
-              payment.teacher_name || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                payment.teacher_name || '—'
+              )}
+            </td>
 
-          <td>
-            ${escapeHtml(
-              payment.teacher_email || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                payment.teacher_email || '—'
+              )}
+            </td>
 
-          <td>
-            ${escapeHtml(
-              payment.payment_method || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                payment.payment_method || '—'
+              )}
+            </td>
 
-          <td>
-            ₱${escapeHtml(
-              payment.amount || '99'
-            )}
-          </td>
+            <td>
+              ₱${escapeHtml(
+                payment.amount || '99'
+              )}
+            </td>
 
-          <td>
-            ${escapeHtml(
-              payment.reference_number || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                payment.reference_number || '—'
+              )}
+            </td>
 
-          <td>
-            ${formatDate(
-              payment.created_at
-            )}
-          </td>
+            <td>
+              ${formatDate(
+                payment.created_at
+              )}
+            </td>
 
-          <td>
-            <span class="badge ${statusClass(status)}">
-              ${status}
-            </span>
-          </td>
+            <td>
+              <span class="badge ${statusClass(status)}">
+                ${status}
+              </span>
+            </td>
 
-          <td>
+            <td>
 
-            <div class="action-group">
+              <div class="action-group">
 
-              <button
-                class="btn view"
-                onclick="viewPayment('${payment.id}')"
-              >
-                VIEW
-              </button>
+                <button
+                  class="btn view"
+                  onclick="viewPayment('${payment.id}')"
+                >
+                  VIEW
+                </button>
 
-              ${
-                status === 'PENDING'
-                ? `
-                  <button
-                    class="btn verify"
-                    onclick="verifyPayment('${payment.id}')"
-                  >
-                    VERIFY
-                  </button>
+                ${
+                  status === 'PENDING'
+                  ? `
+                    <button
+                      class="btn verify"
+                      onclick="verifyPayment('${payment.id}')"
+                    >
+                      VERIFY
+                    </button>
 
-                  <button
-                    class="btn reject"
-                    onclick="rejectPayment('${payment.id}')"
-                  >
-                    REJECT
-                  </button>
-                `
-                : ''
-              }
+                    <button
+                      class="btn reject"
+                      onclick="rejectPayment('${payment.id}')"
+                    >
+                      REJECT
+                    </button>
+                  `
+                  : ''
+                }
 
-            </div>
+              </div>
 
-          </td>
+            </td>
 
-        </tr>
-      `;
+          </tr>
+        `;
 
-    }).join('');
+      })
+      .join('');
 
 
   recent.innerHTML =
@@ -1405,20 +1659,23 @@ function renderPayments(){
           </tr>
         `;
 
-      }).join('');
+      })
+      .join('');
 
 }
 
 
-/* =========================
-   VERIFY
-========================= */
+/* =====================================================
+   VERIFY PAYMENT
+===================================================== */
 
 async function verifyPayment(id){
 
   const payment =
     paymentRecords.find(
-      p => String(p.id) === String(id)
+      p =>
+        String(p.id) ===
+        String(id)
     );
 
   if(!payment) return;
@@ -1442,7 +1699,7 @@ async function verifyPayment(id){
     new Date(now);
 
   expiry.setMonth(
-    expiry.getMonth() + 1
+    expiry.getMonth()+1
   );
 
 
@@ -1490,15 +1747,17 @@ async function verifyPayment(id){
 }
 
 
-/* =========================
-   REJECT
-========================= */
+/* =====================================================
+   REJECT PAYMENT
+===================================================== */
 
 async function rejectPayment(id){
 
   const payment =
     paymentRecords.find(
-      p => String(p.id) === String(id)
+      p =>
+        String(p.id) ===
+        String(id)
     );
 
   if(!payment) return;
@@ -1548,15 +1807,17 @@ async function rejectPayment(id){
 }
 
 
-/* =========================
+/* =====================================================
    VIEW PAYMENT
-========================= */
+===================================================== */
 
 function viewPayment(id){
 
   const payment =
     paymentRecords.find(
-      p => String(p.id) === String(id)
+      p =>
+        String(p.id) ===
+        String(id)
     );
 
   if(!payment) return;
@@ -1570,55 +1831,96 @@ function viewPayment(id){
 
   document.getElementById(
     'paymentDetails'
-  ).innerHTML = `
+  ).innerHTML=`
 
     <div class="detail-row">
-      <strong>Teacher</strong>
+
+      <strong>
+        Teacher
+      </strong>
+
       ${escapeHtml(
         payment.teacher_name || '—'
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Email</strong>
+
+      <strong>
+        Email
+      </strong>
+
       ${escapeHtml(
         payment.teacher_email || '—'
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Payment Method</strong>
+
+      <strong>
+        Payment Method
+      </strong>
+
       ${escapeHtml(
         payment.payment_method || '—'
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Amount</strong>
+
+      <strong>
+        Amount
+      </strong>
+
       ₱${escapeHtml(
         payment.amount || '99'
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Reference Number</strong>
+
+      <strong>
+        Reference Number
+      </strong>
+
       ${escapeHtml(
         payment.reference_number || '—'
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Date Submitted</strong>
+
+      <strong>
+        Date Submitted
+      </strong>
+
       ${formatDate(
         payment.created_at
       )}
+
     </div>
 
+
     <div class="detail-row">
-      <strong>Status</strong>
+
+      <strong>
+        Status
+      </strong>
+
       <span class="badge ${statusClass(status)}">
         ${status}
       </span>
+
     </div>
 
   `;
@@ -1694,16 +1996,11 @@ function closeModalOutside(event){
 }
 
 
-/* =========================
+/* =====================================================
    TEACHERS
-========================= */
+===================================================== */
 
 async function loadTeachers(){
-
-  /*
-    This will use the teacher_profiles
-    table once we create it.
-  */
 
   const {
     data,
@@ -1720,11 +2017,11 @@ async function loadTeachers(){
   if(error){
 
     console.log(
-      'Teacher table not ready:',
+      'Teacher table:',
       error.message
     );
 
-    teacherRecords = [];
+    teacherRecords=[];
 
     renderTeachers();
 
@@ -1732,8 +2029,7 @@ async function loadTeachers(){
   }
 
 
-  teacherRecords =
-    data || [];
+  teacherRecords=data || [];
 
   renderTeachers();
 
@@ -1750,7 +2046,7 @@ function renderTeachers(){
 
   if(!teacherRecords.length){
 
-    table.innerHTML = `
+    table.innerHTML=`
       <tr>
         <td colspan="5" class="empty">
           No teachers found yet.
@@ -1763,63 +2059,68 @@ function renderTeachers(){
 
 
   table.innerHTML =
-    teacherRecords.map(teacher => {
+    teacherRecords
+      .map(teacher => {
 
-      const status =
-        String(
-          teacher.subscription_status ||
-          teacher.status ||
-          'INACTIVE'
-        ).toUpperCase();
+        const status =
+          String(
+            teacher.subscription_status ||
+            teacher.status ||
+            'INACTIVE'
+          ).toUpperCase();
 
 
-      return `
-        <tr>
+        return `
+          <tr>
 
-          <td>
-            ${escapeHtml(
-              teacher.full_name ||
-              teacher.teacher_name ||
-              '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                teacher.full_name ||
+                teacher.teacher_name ||
+                '—'
+              )}
+            </td>
 
-          <td>
-            ${escapeHtml(
-              teacher.email || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                teacher.email ||
+                '—'
+              )}
+            </td>
 
-          <td>
-            <span class="badge ${statusClass(status)}">
-              ${status}
-            </span>
-          </td>
+            <td>
 
-          <td>
-            ${escapeHtml(
-              teacher.subscription_status ||
-              '—'
-            )}
-          </td>
+              <span class="badge ${statusClass(status)}">
+                ${status}
+              </span>
 
-          <td>
-            ${formatDate(
-              teacher.subscription_expiry
-            )}
-          </td>
+            </td>
 
-        </tr>
-      `;
+            <td>
+              ${escapeHtml(
+                teacher.subscription_status ||
+                '—'
+              )}
+            </td>
 
-    }).join('');
+            <td>
+              ${formatDate(
+                teacher.subscription_expiry
+              )}
+            </td>
+
+          </tr>
+        `;
+
+      })
+      .join('');
 
 }
 
 
-/* =========================
+/* =====================================================
    SUBSCRIPTIONS
-========================= */
+===================================================== */
 
 async function loadSubscriptions(){
 
@@ -1838,11 +2139,11 @@ async function loadSubscriptions(){
   if(error){
 
     console.log(
-      'Subscription table not ready:',
+      'Subscription table:',
       error.message
     );
 
-    subscriptionRecords = [];
+    subscriptionRecords=[];
 
     renderSubscriptions();
 
@@ -1850,8 +2151,7 @@ async function loadSubscriptions(){
   }
 
 
-  subscriptionRecords =
-    data || [];
+  subscriptionRecords=data || [];
 
   renderSubscriptions();
 
@@ -1868,7 +2168,7 @@ function renderSubscriptions(){
 
   if(!subscriptionRecords.length){
 
-    table.innerHTML = `
+    table.innerHTML=`
       <tr>
         <td colspan="6" class="empty">
           No subscription records yet.
@@ -1881,70 +2181,74 @@ function renderSubscriptions(){
 
 
   table.innerHTML =
-    subscriptionRecords.map(sub => {
+    subscriptionRecords
+      .map(sub => {
 
-      const status =
-        getSubscriptionStatus(
-          sub.subscription_expiry,
-          sub.status
-        );
+        const status =
+          getSubscriptionStatus(
+            sub.subscription_expiry,
+            sub.status
+          );
 
 
-      return `
-        <tr>
+        return `
+          <tr>
 
-          <td>
-            ${escapeHtml(
-              sub.teacher_name || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                sub.teacher_name || '—'
+              )}
+            </td>
 
-          <td>
-            ${escapeHtml(
-              sub.teacher_email || '—'
-            )}
-          </td>
+            <td>
+              ${escapeHtml(
+                sub.teacher_email || '—'
+              )}
+            </td>
 
-          <td>
-            <span class="badge ${statusClass(status)}">
-              ${status}
-            </span>
-          </td>
+            <td>
 
-          <td>
-            ${formatDate(
-              sub.subscription_start
-            )}
-          </td>
+              <span class="badge ${statusClass(status)}">
+                ${status}
+              </span>
 
-          <td>
-            ${formatDate(
-              sub.subscription_expiry
-            )}
-          </td>
+            </td>
 
-          <td>
+            <td>
+              ${formatDate(
+                sub.subscription_start
+              )}
+            </td>
 
-            <button
-              class="btn view"
-              onclick="viewSubscription('${sub.id}')"
-            >
-              VIEW
-            </button>
+            <td>
+              ${formatDate(
+                sub.subscription_expiry
+              )}
+            </td>
 
-          </td>
+            <td>
 
-        </tr>
-      `;
+              <button
+                class="btn view"
+                onclick="viewSubscription('${sub.id}')"
+              >
+                VIEW
+              </button>
 
-    }).join('');
+            </td>
+
+          </tr>
+        `;
+
+      })
+      .join('');
 
 }
 
 
-/* =========================
+/* =====================================================
    DASHBOARD
-========================= */
+===================================================== */
 
 function updateDashboard(){
 
@@ -1952,6 +2256,7 @@ function updateDashboard(){
     'totalTeachers'
   ).textContent =
     teacherRecords.length;
+
 
   document.getElementById(
     'pendingPayments'
@@ -1974,6 +2279,7 @@ function updateDashboard(){
         ) === 'ACTIVE'
     ).length;
 
+
   document.getElementById(
     'activeSubscriptions'
   ).textContent =
@@ -1988,6 +2294,7 @@ function updateDashboard(){
           s.status
         ) === 'EXPIRING SOON'
     ).length;
+
 
   document.getElementById(
     'expiringSoon'
@@ -2004,6 +2311,7 @@ function updateDashboard(){
         ) === 'EXPIRED'
     ).length;
 
+
   document.getElementById(
     'expiredSubscriptions'
   ).textContent =
@@ -2015,9 +2323,9 @@ function updateDashboard(){
 }
 
 
-/* =========================
-   STATUS
-========================= */
+/* =====================================================
+   SUBSCRIPTION STATUS
+===================================================== */
 
 function getSubscriptionStatus(
   expiry,
@@ -2038,7 +2346,7 @@ function getSubscriptionStatus(
 
   if(!expiry){
 
-    return (
+    return String(
       storedStatus ||
       'INACTIVE'
     ).toUpperCase();
@@ -2051,6 +2359,7 @@ function getSubscriptionStatus(
 
   const now =
     new Date();
+
 
   if(
     expiryDate.getTime() <=
@@ -2084,41 +2393,55 @@ function getSubscriptionStatus(
 }
 
 
+/* =====================================================
+   STATUS CLASS
+===================================================== */
+
 function statusClass(status){
 
   const value =
     String(status)
       .toLowerCase();
 
+
   if(value === 'active')
     return 'active';
+
 
   if(value === 'verified')
     return 'verified';
 
+
   if(value === 'pending')
     return 'pending';
+
 
   if(value === 'rejected')
     return 'rejected';
 
+
   if(
     value === 'expired' ||
     value === 'cancelled'
-  )
+  ){
+
     return 'expired';
+
+  }
+
 
   if(value === 'expiring soon')
     return 'warning';
+
 
   return 'pending';
 
 }
 
 
-/* =========================
-   ALERTS
-========================= */
+/* =====================================================
+   SUBSCRIPTION ALERTS
+===================================================== */
 
 function renderSubscriptionAlerts(){
 
@@ -2137,6 +2460,7 @@ function renderSubscriptionAlerts(){
             sub.subscription_expiry,
             sub.status
           );
+
 
         if(
           status !== 'EXPIRING SOON' &&
@@ -2171,7 +2495,10 @@ function renderSubscriptionAlerts(){
             </strong>
 
             — Subscription
-            <strong>${status}</strong>
+
+            <strong>
+              ${status}
+            </strong>
 
             <br>
 
@@ -2199,19 +2526,18 @@ function renderSubscriptionAlerts(){
 }
 
 
-/* =========================
-   SEARCH
-========================= */
+/* =====================================================
+   SEARCH PAYMENTS
+===================================================== */
 
 function filterPayments(){
 
   const query =
-    document.getElementById(
-      'paymentSearch'
-    )
-    .value
-    .toLowerCase()
-    .trim();
+    document
+      .getElementById('paymentSearch')
+      .value
+      .toLowerCase()
+      .trim();
 
 
   document
@@ -2232,15 +2558,18 @@ function filterPayments(){
 }
 
 
+/* =====================================================
+   SEARCH TEACHERS
+===================================================== */
+
 function filterTeachers(){
 
   const query =
-    document.getElementById(
-      'teacherSearch'
-    )
-    .value
-    .toLowerCase()
-    .trim();
+    document
+      .getElementById('teacherSearch')
+      .value
+      .toLowerCase()
+      .trim();
 
 
   document
@@ -2261,17 +2590,19 @@ function filterTeachers(){
 }
 
 
-/* =========================
+/* =====================================================
    HELPERS
-========================= */
+===================================================== */
 
 function formatDate(value){
 
   if(!value)
     return '—';
 
+
   const date =
     new Date(value);
+
 
   if(
     Number.isNaN(
@@ -2282,6 +2613,7 @@ function formatDate(value){
     return '—';
 
   }
+
 
   return date.toLocaleString(
     undefined,
@@ -2318,12 +2650,15 @@ function showToast(message){
       'toast'
     );
 
+
   toast.textContent =
     message;
+
 
   toast.classList.remove(
     'hidden'
   );
+
 
   setTimeout(() => {
 
@@ -2336,33 +2671,45 @@ function showToast(message){
 }
 
 
+/* =====================================================
+   VIEW SUBSCRIPTION
+===================================================== */
+
 function viewSubscription(id){
 
   const sub =
     subscriptionRecords.find(
-      s => String(s.id) === String(id)
+      s =>
+        String(s.id) ===
+        String(id)
     );
 
+
   if(!sub) return;
+
 
   alert(
     `Teacher: ${
       sub.teacher_name || '—'
     }\n\n` +
+
     `Email: ${
       sub.teacher_email || '—'
     }\n\n` +
+
     `Status: ${
       getSubscriptionStatus(
         sub.subscription_expiry,
         sub.status
       )
     }\n\n` +
+
     `Start: ${
       formatDate(
         sub.subscription_start
       )
     }\n\n` +
+
     `Expiry: ${
       formatDate(
         sub.subscription_expiry
@@ -2373,15 +2720,16 @@ function viewSubscription(id){
 }
 
 
-/* =========================
-   START
-========================= */
+/* =====================================================
+   AUTH STATE
+===================================================== */
 
 supabaseClient.auth.onAuthStateChange(
   (event,session) => {
 
     const user =
       session?.user;
+
 
     if(
       user &&
@@ -2392,9 +2740,11 @@ supabaseClient.auth.onAuthStateChange(
 
       showAdminPortal(user);
 
-    }else if(
-      event === 'SIGNED_OUT'
-    ){
+      return;
+    }
+
+
+    if(event === 'SIGNED_OUT'){
 
       showLogin();
 
@@ -2403,6 +2753,10 @@ supabaseClient.auth.onAuthStateChange(
   }
 );
 
+
+/* =====================================================
+   START
+===================================================== */
 
 checkAdminSession();
 
