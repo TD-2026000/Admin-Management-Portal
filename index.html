@@ -1116,10 +1116,10 @@ const supabaseClient =
    Keep the Admin Portal auth/database above unchanged.
 ===================================================== */
 const PAYMENT_SUPABASE_URL =
-  'https://ibhmimpmeftzkrtzhkmp.supabase.co';
+  'https://ifaptabszmvxgaltmrnh.supabase.co';
 
 const PAYMENT_SUPABASE_PUBLISHABLE_KEY =
-  'sb_publishable_HqQA24yJsm_PE_1TKi2W4g_Mpdr9GI3';
+  'sb_publishable_XWdNI0Jix2y_TGMVOAfYjA_bADlqGpq';
 
 const paymentSupabaseClient =
   window.supabase.createClient(
@@ -1754,18 +1754,7 @@ async function verifyPayment(id){
   await paymentSupabaseClient
     .from('payments')
     .update({
-
-      status:'VERIFIED',
-
-      verified_at:
-        now.toISOString(),
-
-      subscription_start:
-        now.toISOString(),
-
-      subscription_expiry:
-        expiry.toISOString()
-
+      status:'VERIFIED'
     })
     .eq('id',id);
 
