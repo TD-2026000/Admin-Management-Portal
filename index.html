@@ -450,6 +450,48 @@ th{
 }
 
 /* =========================
+   PAYMENT PROOF
+========================= */
+
+.proof-preview{
+  margin-top:8px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  padding:10px;
+  background:#f8fafc;
+}
+
+.proof-preview img{
+  display:block;
+  width:100%;
+  max-height:420px;
+  object-fit:contain;
+  border-radius:8px;
+  background:white;
+}
+
+.proof-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:8px;
+  padding:10px 14px;
+  border-radius:9px;
+  background:#e0f2fe;
+  color:#0369a1;
+  text-decoration:none;
+  font-weight:bold;
+}
+
+.proof-name{
+  display:block;
+  margin-top:7px;
+  color:#6b7280;
+  font-size:12px;
+  word-break:break-word;
+}
+
+/* =========================
    MOBILE
 ========================= */
 
@@ -1112,6 +1154,33 @@ const supabaseClient =
 
 
 /* =====================================================
+   TEACHER PORTAL PAYMENT DATABASE
+   Payments from the Teacher Portal are stored in the
+   'payments' table of the Teacher Portal Supabase project.
+===================================================== */
+
+const TEACHER_PORTAL_SUPABASE_URL =
+  'https://ibhmimpmeftzkrtzhkmp.supabase.co';
+
+const TEACHER_PORTAL_PUBLISHABLE_KEY =
+  'sb_publishable_HqQA24yJsm_PE_1TKi2W4g_Mpdr9GI3';
+
+const teacherPortalClient =
+  window.supabase.createClient(
+    TEACHER_PORTAL_SUPABASE_URL,
+    TEACHER_PORTAL_PUBLISHABLE_KEY,
+    {
+      auth:{
+        storageKey:'admin-teacher-payment-reader',
+        persistSession:false,
+        autoRefreshToken:false,
+        detectSessionInUrl:false
+      }
+    }
+  );
+
+
+/* =====================================================
    DATA
 ===================================================== */
 
@@ -1428,11 +1497,14 @@ function showTabById(tab){
 
 async function loadAllData(){
 
+  /* Load teacher records first so payment rows can use the
+     teacher name from the Admin teacher table when available. */
   await Promise.all([
-    loadPayments(),
     loadTeachers(),
     loadSubscriptions()
   ]);
+
+  await loadPayments();
 
   updateDashboard();
 
@@ -1443,23 +1515,109 @@ async function loadAllData(){
    PAYMENTS
 ===================================================== */
 
+function getPaymentNotes(payment){
+
+  const raw = payment?.notes;
+
+  if(!raw){
+    return {};
+  }
+
+  if(typeof raw === 'object'){
+    return raw || {};
+  }
+
+  try{
+    const parsed = JSON.parse(String(raw));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  }catch(e){
+    return {};
+  }
+
+}
+
+
+function getTeacherByEmail(email){
+
+  const target = String(email || '').trim().toLowerCase();
+
+  if(!target) return null;
+
+  return teacherRecords.find(teacher =>
+    String(teacher.email || '').trim().toLowerCase() === target
+  ) || null;
+
+}
+
+
+function normalizePaymentRecord(payment){
+
+  const meta = getPaymentNotes(payment);
+  const teacher = getTeacherByEmail(
+    meta.email || payment.email || payment.teacher_email || ''
+  );
+
+  return {
+    ...payment,
+    teacher_email:
+      meta.email ||
+      payment.email ||
+      payment.teacher_email ||
+      teacher?.email ||
+      '',
+    teacher_name:
+      payment.teacher_name ||
+      teacher?.full_name ||
+      teacher?.teacher_name ||
+      meta.teacher_name ||
+      meta.full_name ||
+      meta.email ||
+      payment.email ||
+      '—',
+    created_at:
+      payment.created_at ||
+      payment.payment_date ||
+      '',
+    payment_method:
+      payment.payment_method ||
+      '—',
+    amount:
+      payment.amount ?? 99,
+    reference_number:
+      payment.reference_number ||
+      '—',
+    status:
+      String(payment.status || 'PENDING').toUpperCase(),
+    proof_name:
+      meta.proof_name ||
+      payment.proof_name ||
+      '',
+    proof_data:
+      meta.proof_data ||
+      payment.proof_data ||
+      '',
+    note:
+      meta.note ||
+      meta.notes ||
+      ''
+  };
+}
+
+
 async function loadPayments(){
 
   const {
     data,
     error
   } =
-  await supabaseClient
-    .from('subscription_payments')
-    .select('*')
-    .order('created_at',{
-      ascending:false
-    });
+  await teacherPortalClient
+    .from('payments')
+    .select('*');
 
   if(error){
 
     console.log(
-      'Payment table:',
+      'Teacher Portal payment table:',
       error.message
     );
 
@@ -1470,7 +1628,13 @@ async function loadPayments(){
     return;
   }
 
-  paymentRecords=data || [];
+  paymentRecords=(data || [])
+    .map(normalizePaymentRecord)
+    .sort((a,b)=>
+      String(b.created_at || '').localeCompare(
+        String(a.created_at || '')
+      )
+    );
 
   renderPayments();
 
@@ -1673,9 +1837,7 @@ async function verifyPayment(id){
 
   const payment =
     paymentRecords.find(
-      p =>
-        String(p.id) ===
-        String(id)
+      p => String(p.id) === String(id)
     );
 
   if(!payment) return;
@@ -1691,53 +1853,91 @@ async function verifyPayment(id){
 
   if(!confirmed) return;
 
+  const now = new Date();
 
-  const now =
-    new Date();
+  const expiry = new Date(now);
+  expiry.setMonth(expiry.getMonth()+1);
 
-  const expiry =
-    new Date(now);
-
-  expiry.setMonth(
-    expiry.getMonth()+1
-  );
-
-
-  const {
-    error
-  } =
-  await supabaseClient
-    .from('subscription_payments')
-    .update({
-
-      status:'VERIFIED',
-
-      verified_at:
-        now.toISOString(),
-
-      subscription_start:
-        now.toISOString(),
-
-      subscription_expiry:
-        expiry.toISOString()
-
-    })
-    .eq('id',id);
-
+  const {error} =
+    await teacherPortalClient
+      .from('payments')
+      .update({
+        status:'VERIFIED'
+      })
+      .eq('id',id);
 
   if(error){
 
     showToast(
-      'Unable to verify payment: ' +
-      error.message
+      'Unable to verify payment: ' + error.message
     );
 
     return;
   }
 
+  /* Try to activate the Teacher Portal subscription if the
+     Admin session has permission to update that table.
+     Payment verification itself is not blocked if this
+     optional subscription update is denied by RLS. */
+  let subscriptionWarning='';
+
+  if(payment.user_id){
+
+    try{
+
+      const {data:existing,error:findError} =
+        await teacherPortalClient
+          .from('subscriptions')
+          .select('user_id')
+          .eq('user_id',payment.user_id)
+          .order('created_at',{ascending:false})
+          .limit(1)
+          .maybeSingle();
+
+      if(findError){
+        subscriptionWarning=findError.message;
+      }else if(existing){
+
+        const {error:updateError} =
+          await teacherPortalClient
+            .from('subscriptions')
+            .update({
+              status:'ACTIVE',
+              plan_name:'MONTHLY',
+              price:99,
+              expiry_date:expiry.toISOString()
+            })
+            .eq('user_id',payment.user_id);
+
+        if(updateError) subscriptionWarning=updateError.message;
+
+      }else{
+
+        const {error:insertError} =
+          await teacherPortalClient
+            .from('subscriptions')
+            .insert([{
+              user_id:payment.user_id,
+              status:'ACTIVE',
+              plan_name:'MONTHLY',
+              price:99,
+              expiry_date:expiry.toISOString()
+            }]);
+
+        if(insertError) subscriptionWarning=insertError.message;
+
+      }
+
+    }catch(err){
+      subscriptionWarning=err?.message || 'Subscription update failed.';
+    }
+
+  }
 
   showToast(
-    'Payment verified successfully.'
+    subscriptionWarning
+      ? 'Payment verified. Subscription update needs database permission.'
+      : 'Payment verified successfully.'
   );
 
   closePaymentModal();
@@ -1755,9 +1955,7 @@ async function rejectPayment(id){
 
   const payment =
     paymentRecords.find(
-      p =>
-        String(p.id) ===
-        String(id)
+      p => String(p.id) === String(id)
     );
 
   if(!payment) return;
@@ -1773,32 +1971,24 @@ async function rejectPayment(id){
 
   if(!confirmed) return;
 
-
-  const {
-    error
-  } =
-  await supabaseClient
-    .from('subscription_payments')
-    .update({
-      status:'REJECTED'
-    })
-    .eq('id',id);
-
+  const {error} =
+    await teacherPortalClient
+      .from('payments')
+      .update({
+        status:'REJECTED'
+      })
+      .eq('id',id);
 
   if(error){
 
     showToast(
-      'Unable to reject payment: ' +
-      error.message
+      'Unable to reject payment: ' + error.message
     );
 
     return;
   }
 
-
-  showToast(
-    'Payment rejected.'
-  );
+  showToast('Payment rejected.');
 
   closePaymentModal();
 
@@ -1815,156 +2005,127 @@ function viewPayment(id){
 
   const payment =
     paymentRecords.find(
-      p =>
-        String(p.id) ===
-        String(id)
+      p => String(p.id) === String(id)
     );
 
   if(!payment) return;
 
-
   const status =
-    String(
-      payment.status || 'PENDING'
-    ).toUpperCase();
+    String(payment.status || 'PENDING').toUpperCase();
 
+  const proofData = String(payment.proof_data || '');
+  const proofName = String(payment.proof_name || '');
 
-  document.getElementById(
-    'paymentDetails'
-  ).innerHTML=`
-
-    <div class="detail-row">
-
-      <strong>
-        Teacher
-      </strong>
-
-      ${escapeHtml(
-        payment.teacher_name || '—'
-      )}
-
+  let proofHtml = `
+    <div class="proof-preview">
+      <strong>No payment proof uploaded.</strong>
     </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Email
-      </strong>
-
-      ${escapeHtml(
-        payment.teacher_email || '—'
-      )}
-
-    </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Payment Method
-      </strong>
-
-      ${escapeHtml(
-        payment.payment_method || '—'
-      )}
-
-    </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Amount
-      </strong>
-
-      ₱${escapeHtml(
-        payment.amount || '99'
-      )}
-
-    </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Reference Number
-      </strong>
-
-      ${escapeHtml(
-        payment.reference_number || '—'
-      )}
-
-    </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Date Submitted
-      </strong>
-
-      ${formatDate(
-        payment.created_at
-      )}
-
-    </div>
-
-
-    <div class="detail-row">
-
-      <strong>
-        Status
-      </strong>
-
-      <span class="badge ${statusClass(status)}">
-        ${status}
-      </span>
-
-    </div>
-
   `;
 
+  if(/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(proofData)){
 
-  const verifyBtn =
-    document.getElementById(
-      'modalVerifyBtn'
-    );
+    proofHtml = `
+      <div class="proof-preview">
+        <img
+          src="${escapeHtml(proofData)}"
+          alt="Payment proof"
+        >
+        ${proofName ? `<span class="proof-name">${escapeHtml(proofName)}</span>` : ''}
+      </div>
+    `;
 
-  const rejectBtn =
-    document.getElementById(
-      'modalRejectBtn'
-    );
+  }else if(/^data:application\/pdf;base64,/i.test(proofData)){
 
-
-  if(status === 'PENDING'){
-
-    verifyBtn.classList.remove(
-      'hidden'
-    );
-
-    rejectBtn.classList.remove(
-      'hidden'
-    );
-
-    verifyBtn.onclick =
-      () => verifyPayment(id);
-
-    rejectBtn.onclick =
-      () => rejectPayment(id);
-
-  }else{
-
-    verifyBtn.classList.add(
-      'hidden'
-    );
-
-    rejectBtn.classList.add(
-      'hidden'
-    );
+    proofHtml = `
+      <div class="proof-preview">
+        <strong>PDF payment proof</strong>
+        ${proofName ? `<span class="proof-name">${escapeHtml(proofName)}</span>` : ''}
+        <a
+          class="proof-link"
+          href="${escapeHtml(proofData)}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          VIEW / OPEN RECEIPT PDF
+        </a>
+      </div>
+    `;
 
   }
 
+  document.getElementById('paymentDetails').innerHTML=`
+
+    <div class="detail-row">
+      <strong>Teacher</strong>
+      ${escapeHtml(payment.teacher_name || '—')}
+    </div>
+
+    <div class="detail-row">
+      <strong>Email</strong>
+      ${escapeHtml(payment.teacher_email || '—')}
+    </div>
+
+    <div class="detail-row">
+      <strong>Payment Method</strong>
+      ${escapeHtml(payment.payment_method || '—')}
+    </div>
+
+    <div class="detail-row">
+      <strong>Amount</strong>
+      ₱${escapeHtml(payment.amount || '99')}
+    </div>
+
+    <div class="detail-row">
+      <strong>Reference Number</strong>
+      ${escapeHtml(payment.reference_number || '—')}
+    </div>
+
+    <div class="detail-row">
+      <strong>Date Submitted</strong>
+      ${formatDate(payment.created_at)}
+    </div>
+
+    <div class="detail-row">
+      <strong>Status</strong>
+      <span class="badge ${statusClass(status)}">
+        ${status}
+      </span>
+    </div>
+
+    <div class="detail-row">
+      <strong>Payment Proof / Receipt</strong>
+      ${proofHtml}
+    </div>
+
+    ${payment.note ? `
+      <div class="detail-row">
+        <strong>Teacher Note</strong>
+        ${escapeHtml(payment.note)}
+      </div>
+    ` : ''}
+
+  `;
+
+  const verifyBtn =
+    document.getElementById('modalVerifyBtn');
+
+  const rejectBtn =
+    document.getElementById('modalRejectBtn');
+
+  if(status === 'PENDING'){
+
+    verifyBtn.classList.remove('hidden');
+    rejectBtn.classList.remove('hidden');
+
+    verifyBtn.onclick = () => verifyPayment(id);
+    rejectBtn.onclick = () => rejectPayment(id);
+
+  }else{
+
+    verifyBtn.classList.add('hidden');
+    rejectBtn.classList.add('hidden');
+
+  }
 
   document
     .getElementById('paymentModal')
