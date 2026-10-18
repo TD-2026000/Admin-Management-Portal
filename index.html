@@ -1498,7 +1498,7 @@ async function loadPayments(){
     data,
     error
   } =
-  await paymentSupabaseClient
+  await supabaseClient
     .from('payments')
     .select('*')
     .order('created_at',{
@@ -1714,6 +1714,7 @@ function renderPayments(){
    VERIFY PAYMENT
 ===================================================== */
 
+
 async function verifyPayment(id){
 
   const payment =
@@ -1736,49 +1737,113 @@ async function verifyPayment(id){
 
   if(!confirmed) return;
 
-
-  const now =
-    new Date();
-
-  const expiry =
-    new Date(now);
-
-  expiry.setMonth(
-    expiry.getMonth()+1
-  );
-
-
-  const {
-    error
-  } =
-  await paymentSupabaseClient
-    .from('payments')
-    .update({
-      status:'VERIFIED'
-    })
-    .eq('id',id);
-
-
-  if(error){
-
+  if(!payment.user_id){
     showToast(
-      'Unable to verify payment: ' +
-      error.message
+      'Unable to verify: Teacher user ID is missing.'
     );
-
     return;
   }
 
+  const now = new Date();
+
+  // Check if this teacher already has a subscription.
+  const {
+    data: existingSubscription,
+    error: findError
+  } = await supabaseClient
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', payment.user_id)
+    .maybeSingle();
+
+  if(findError){
+    showToast(
+      'Unable to check subscription: ' +
+      findError.message
+    );
+    return;
+  }
+
+  // Extend from the current expiry date if still active.
+  let startDate = now;
+  let expiryDate = new Date(now);
+
+  if(
+    existingSubscription &&
+    existingSubscription.expiry_date &&
+    new Date(existingSubscription.expiry_date) > now
+  ){
+    expiryDate =
+      new Date(existingSubscription.expiry_date);
+  }
+
+  expiryDate.setMonth(
+    expiryDate.getMonth() + 1
+  );
+
+  const subscriptionData = {
+    user_id: payment.user_id,
+    plan_name: 'Monthly',
+    price: Number(payment.amount) || 99,
+    start_date: startDate.toISOString(),
+    expiry_date: expiryDate.toISOString(),
+    status: 'ACTIVE'
+  };
+
+  // Save or update the subscription first.
+  let subscriptionError = null;
+
+  if(existingSubscription){
+    const result = await supabaseClient
+      .from('subscriptions')
+      .update(subscriptionData)
+      .eq('id', existingSubscription.id);
+
+    subscriptionError = result.error;
+  } else {
+    const result = await supabaseClient
+      .from('subscriptions')
+      .insert([subscriptionData]);
+
+    subscriptionError = result.error;
+  }
+
+  if(subscriptionError){
+    showToast(
+      'Unable to save subscription: ' +
+      subscriptionError.message
+    );
+    return;
+  }
+
+  // Mark the payment as verified only after subscription saves.
+  const {
+    error: paymentError
+  } = await supabaseClient
+    .from('payments')
+    .update({
+      status: 'VERIFIED'
+    })
+    .eq('id', id);
+
+  if(paymentError){
+    showToast(
+      'Subscription saved, but payment status update failed: ' +
+      paymentError.message
+    );
+    await loadAllData();
+    return;
+  }
 
   showToast(
-    'Payment verified successfully.'
+    'Payment verified and subscription activated successfully!'
   );
 
   closePaymentModal();
 
   await loadAllData();
-
 }
+
 
 
 /* =====================================================
@@ -1811,7 +1876,7 @@ async function rejectPayment(id){
   const {
     error
   } =
-  await paymentSupabaseClient
+  await supabaseClient
     .from('payments')
     .update({
       status:'REJECTED'
@@ -2185,31 +2250,32 @@ async function loadSubscriptions(){
   const {
     data,
     error
-  } =
-  await supabaseClient
-    .from('teacher_subscriptions')
+  } = await supabaseClient
+    .from('subscriptions')
     .select('*')
-    .order('subscription_expiry',{
-      ascending:true
+    .order('expiry_date', {
+      ascending: true
     });
-
 
   if(error){
 
-    console.log(
-      'Subscription table:',
+    console.error(
+      'Subscriptions table error:',
       error.message
     );
 
-    subscriptionRecords=[];
-
+    subscriptionRecords = [];
     renderSubscriptions();
+
+    showToast(
+      'Unable to load subscriptions: ' +
+      error.message
+    );
 
     return;
   }
 
-
-  subscriptionRecords=data || [];
+  subscriptionRecords = data || [];
 
   renderSubscriptions();
 
@@ -2244,7 +2310,7 @@ function renderSubscriptions(){
 
         const status =
           getSubscriptionStatus(
-            sub.subscription_expiry,
+            sub.expiry_date,
             sub.status
           );
 
@@ -2280,7 +2346,7 @@ function renderSubscriptions(){
 
             <td>
               ${formatDate(
-                sub.subscription_expiry
+                sub.expiry_date
               )}
             </td>
 
@@ -2515,7 +2581,7 @@ function renderSubscriptionAlerts(){
 
         const status =
           getSubscriptionStatus(
-            sub.subscription_expiry,
+            sub.expiry_date,
             sub.status
           );
 
@@ -2562,7 +2628,7 @@ function renderSubscriptionAlerts(){
 
             Expiry:
             ${formatDate(
-              sub.subscription_expiry
+              sub.expiry_date
             )}
 
           </div>
@@ -2757,20 +2823,20 @@ function viewSubscription(id){
 
     `Status: ${
       getSubscriptionStatus(
-        sub.subscription_expiry,
+        sub.expiry_date,
         sub.status
       )
     }\n\n` +
 
     `Start: ${
       formatDate(
-        sub.subscription_start
+        sub.start_date
       )
     }\n\n` +
 
     `Expiry: ${
       formatDate(
-        sub.subscription_expiry
+        sub.expiry_date
       )
     }`
   );
