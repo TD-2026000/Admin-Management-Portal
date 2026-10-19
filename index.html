@@ -1736,107 +1736,48 @@ async function verifyPayment(id){
 
   if(!confirmed) return;
 
-  const teacherId = payment.user_id;
 
-  if(!teacherId){
-    showToast('Cannot activate subscription: this payment record has no user_id.');
-    return;
-  }
+  const now =
+    new Date();
 
-  const now = new Date();
+  const expiry =
+    new Date(now);
 
-  /* First preserve the existing working behavior: mark the payment VERIFIED. */
-  const { error: paymentError } =
-    await paymentSupabaseClient
-      .from('payments')
-      .update({ status:'VERIFIED' })
-      .eq('id',id);
+  expiry.setMonth(
+    expiry.getMonth()+1
+  );
 
-  if(paymentError){
-    showToast('Unable to verify payment: ' + paymentError.message);
-    return;
-  }
 
-  /* Find the teacher's latest subscription so renewals can extend an unexpired plan. */
   const {
-    data: existingSubscription,
-    error: subscriptionReadError
-  } = await paymentSupabaseClient
-    .from('subscriptions')
-    .select('id,status,start_date,expiry_date,created_at')
-    .eq('user_id',teacherId)
-    .order('created_at',{ascending:false})
-    .limit(1)
-    .maybeSingle();
-
-  if(subscriptionReadError){
-    showToast('Payment verified, but subscription lookup failed: ' + subscriptionReadError.message);
-    closePaymentModal();
-    await loadAllData();
-    return;
-  }
-
-  let startDate = now;
-  let expiryBase = now;
-
-  if(existingSubscription?.expiry_date){
-    const oldExpiry = new Date(existingSubscription.expiry_date);
-    if(Number.isFinite(oldExpiry.getTime()) && oldExpiry > now){
-      expiryBase = oldExpiry;
-    }
-  }
-
-  const expiryDate = new Date(expiryBase);
-  expiryDate.setMonth(expiryDate.getMonth()+1);
-
-  const subscriptionPayload = {
-    user_id: teacherId,
-    plan_name: 'Monthly',
-    price: Number(payment.amount || 99),
-    start_date: startDate.toISOString(),
-    expiry_date: expiryDate.toISOString(),
-    status: 'ACTIVE',
-    updated_at: now.toISOString()
-  };
-
-  let subscriptionWrite;
-  if(existingSubscription?.id){
-    subscriptionWrite = await paymentSupabaseClient
-      .from('subscriptions')
-      .update(subscriptionPayload)
-      .eq('id',existingSubscription.id);
-  }else{
-    subscriptionWrite = await paymentSupabaseClient
-      .from('subscriptions')
-      .insert([subscriptionPayload]);
-  }
-
-  if(subscriptionWrite.error){
-    showToast('Payment verified, but subscription activation failed: ' + subscriptionWrite.error.message);
-    closePaymentModal();
-    await loadAllData();
-    return;
-  }
-
-  /* Update the teacher access flag used by the Teacher Portal. */
-  const { error: profileError } = await paymentSupabaseClient
-    .from('profiles')
+    error
+  } =
+  await paymentSupabaseClient
+    .from('payments')
     .update({
-      access_status: 'ACTIVE',
-      updated_at: now.toISOString()
+      status:'VERIFIED'
     })
-    .eq('id',teacherId);
+    .eq('id',id);
 
-  if(profileError){
-    showToast('Payment and subscription updated, but profile access update failed: ' + profileError.message);
-    closePaymentModal();
-    await loadAllData();
+
+  if(error){
+
+    showToast(
+      'Unable to verify payment: ' +
+      error.message
+    );
+
     return;
   }
 
-  showToast('Payment verified. Subscription activated successfully.');
+
+  showToast(
+    'Payment verified successfully.'
+  );
+
   closePaymentModal();
+
   await loadAllData();
+
 }
 
 
