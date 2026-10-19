@@ -396,9 +396,42 @@ async function verifyPayment(id){
       const result = await supabaseClient.from('subscriptions').insert([subscriptionData]);
       subscriptionError = result.error;
     }
-    if(subscriptionError){ showToast('Unable to save subscription: ' + subscriptionError.message); return; }
+if(subscriptionError){
+  showToast('Unable to save subscription: ' + subscriptionError.message);
+  return;
+}
 
-    const {error:paymentError} = await supabaseClient.from('payments').update({status:'VERIFIED'}).eq('id',id);
+/* UPDATE TEACHER ACCESS */
+const {error:accessError} = await supabaseClient
+  .from('profiles')
+  .update({
+    access_status: 'ACTIVE'
+  })
+  .eq('id', payment.user_id);
+
+if(accessError){
+  showToast('Subscription saved, but teacher access update failed: ' + accessError.message);
+  console.error('Profile access update error:', accessError);
+  return;
+}
+
+/* MARK PAYMENT AS VERIFIED */
+const {error:paymentError} = await supabaseClient
+  .from('payments')
+  .update({
+    status:'VERIFIED'
+  })
+  .eq('id',id);
+
+if(paymentError){
+  showToast('Subscription saved, but payment status update failed: ' + paymentError.message);
+  await loadAllData();
+  return;
+}
+
+showToast('Payment verified and subscription activated successfully!');
+closePaymentModal();
+await loadAllData();
     if(paymentError){
       showToast('Subscription saved, but payment status update failed: ' + paymentError.message);
       await loadAllData();
