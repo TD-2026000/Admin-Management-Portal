@@ -432,18 +432,11 @@ if(paymentError){
 showToast('Payment verified and subscription activated successfully!');
 closePaymentModal();
 await loadAllData();
-    if(paymentError){
-      showToast('Subscription saved, but payment status update failed: ' + paymentError.message);
-      await loadAllData();
-      return;
-    }
-    showToast('Payment verified and subscription activated successfully!');
-    closePaymentModal();
-    await loadAllData();
-  }catch(err){
-    console.error('Verify payment error:',err);
-    showToast('Unable to verify payment. Check the console for details.');
-  }
+
+}catch(err){
+  console.error('Verify payment error:',err);
+  showToast('Unable to verify payment. Check the console for details.');
+}
 }
 
 /* REJECT PAYMENT */
