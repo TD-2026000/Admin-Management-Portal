@@ -776,12 +776,10 @@ th{
               <tr>
                 <th>Teacher</th>
                 <th>Email</th>
-                <th>Payment Method</th>
+                <th>Method</th>
                 <th>Amount</th>
-                <th>Reference Number</th>
-                <th>Date Submitted</th>
+                <th>Date</th>
                 <th>Status</th>
-                <th>Action</th>
               </tr>
 
             </thead>
@@ -790,10 +788,10 @@ th{
 
               <tr>
                 <td
-                  colspan="8"
+                  colspan="6"
                   class="empty"
                 >
-                  No pending payment submissions.
+                  No payment submissions yet.
                 </td>
               </tr>
 
@@ -805,6 +803,26 @@ th{
 
       </div>
 
+
+      <div class="panel">
+
+        <div class="panel-header">
+
+          <h2>
+            Subscription Alerts
+          </h2>
+
+        </div>
+
+        <div id="subscriptionAlerts">
+
+          <div class="empty">
+            No subscription alerts.
+          </div>
+
+        </div>
+
+      </div>
 
     </section>
 
@@ -1353,10 +1371,6 @@ async function adminLogout(){
 
   }
 
-  try{ sessionStorage.removeItem(ADMIN_CACHE_KEY); }catch(e){}
-  paymentRecords=[];
-  teacherRecords=[];
-  subscriptionRecords=[];
   showLogin();
 
 }
@@ -1436,52 +1450,16 @@ function showTabById(tab){
    LOAD ALL DATA
 ===================================================== */
 
-const ADMIN_CACHE_KEY = 'admin-management-portal-cache-v1';
-
-function restoreCachedData(){
-  try{
-    const cached = sessionStorage.getItem(ADMIN_CACHE_KEY);
-    if(!cached) return false;
-    const parsed = JSON.parse(cached);
-    paymentRecords = Array.isArray(parsed.payments) ? parsed.payments : paymentRecords;
-    teacherRecords = Array.isArray(parsed.teachers) ? parsed.teachers : teacherRecords;
-    subscriptionRecords = Array.isArray(parsed.subscriptions) ? parsed.subscriptions : subscriptionRecords;
-    renderPayments();
-    renderTeachers();
-    renderSubscriptions();
-    updateDashboard();
-    return true;
-  }catch(err){
-    console.warn('Unable to restore cached admin data:', err);
-    return false;
-  }
-}
-
-function saveCachedData(){
-  try{
-    // Do not cache payment proof files/screenshots in browser storage.
-    const safePayments = paymentRecords.map(({proof_data, ...payment}) => payment);
-    sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({
-      payments: safePayments,
-      teachers: teacherRecords,
-      subscriptions: subscriptionRecords,
-      savedAt: Date.now()
-    }));
-  }catch(err){
-    console.warn('Unable to cache admin data:', err);
-  }
-}
-
 async function loadAllData(){
-  // Show the last successful view immediately, then refresh from Supabase.
-  restoreCachedData();
-  await Promise.allSettled([
+
+  await Promise.all([
     loadPayments(),
     loadTeachers(),
     loadSubscriptions()
   ]);
+
   updateDashboard();
-  saveCachedData();
+
 }
 
 
@@ -1531,16 +1509,15 @@ async function loadPayments(){
 
     console.error('Teacher Portal payments error:',error);
 
-    // Keep the last known records visible if a request temporarily fails.
+    paymentRecords=[];
     renderPayments();
 
-    showToast('Unable to refresh payments. Showing the last loaded records.');
+    showToast('Unable to load Teacher Portal payments: ' + error.message);
     return;
   }
 
   paymentRecords=(data || []).map(normalizePaymentRecord);
   renderPayments();
-  saveCachedData();
 
 }
 
@@ -1558,12 +1535,23 @@ function renderPayments(){
     );
 
   if(!paymentRecords.length){
+
     table.innerHTML=`
-      <tr><td colspan="8" class="empty">No payment submissions yet.</td></tr>
+      <tr>
+        <td colspan="8" class="empty">
+          No payment submissions yet.
+        </td>
+      </tr>
     `;
+
     recent.innerHTML=`
-      <tr><td colspan="8" class="empty">No pending payment submissions.</td></tr>
+      <tr>
+        <td colspan="6" class="empty">
+          No payment submissions yet.
+        </td>
+      </tr>
     `;
+
     return;
   }
 
@@ -1664,27 +1652,60 @@ function renderPayments(){
       .join('');
 
 
-  // Dashboard is an action queue: only payments still awaiting review appear here.
-  const pendingPayments = paymentRecords.filter(payment =>
-    String(payment.status || 'PENDING').toUpperCase() === 'PENDING'
-  );
+  recent.innerHTML =
+    paymentRecords
+      .slice(0,5)
+      .map(payment => {
 
-  recent.innerHTML = pendingPayments.length
-    ? pendingPayments.slice(0, 10).map(payment => `
-        <tr>
-          <td>${escapeHtml(payment.teacher_name || '—')}</td>
-          <td>${escapeHtml(payment.teacher_email || '—')}</td>
-          <td>${escapeHtml(payment.payment_method || '—')}</td>
-          <td>₱${escapeHtml(payment.amount ?? '99')}</td>
-          <td>${escapeHtml(payment.reference_number || '—')}</td>
-          <td>${formatDate(payment.created_at)}</td>
-          <td><span class="badge pending">PENDING</span></td>
-          <td><div class="action-group">
-            <button class="btn view" onclick="viewPayment('${escapeHtml(payment.id)}')">VIEW DETAILS</button>
-          </div></td>
-        </tr>
-      `).join('')
-    : `<tr><td colspan="8" class="empty">All submitted payments have been reviewed. No pending payments.</td></tr>`;
+        const status =
+          String(
+            payment.status || 'PENDING'
+          ).toUpperCase();
+
+        return `
+          <tr>
+
+            <td>
+              ${escapeHtml(
+                payment.teacher_name || '—'
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                payment.teacher_email || '—'
+              )}
+            </td>
+
+            <td>
+              ${escapeHtml(
+                payment.payment_method || '—'
+              )}
+            </td>
+
+            <td>
+              ₱${escapeHtml(
+                payment.amount || '99'
+              )}
+            </td>
+
+            <td>
+              ${formatDate(
+                payment.created_at
+              )}
+            </td>
+
+            <td>
+              <span class="badge ${statusClass(status)}">
+                ${status}
+              </span>
+            </td>
+
+          </tr>
+        `;
+
+      })
+      .join('');
 
 }
 
@@ -2058,7 +2079,8 @@ async function loadTeachers(){
       error.message
     );
 
-    // Preserve the last known list during a temporary Supabase error.
+    teacherRecords=[];
+
     renderTeachers();
 
     return;
@@ -2068,7 +2090,6 @@ async function loadTeachers(){
   teacherRecords=data || [];
 
   renderTeachers();
-  saveCachedData();
 
 }
 
@@ -2180,7 +2201,8 @@ async function loadSubscriptions(){
       error.message
     );
 
-    // Preserve the last known list during a temporary Supabase error.
+    subscriptionRecords=[];
+
     renderSubscriptions();
 
     return;
@@ -2190,7 +2212,6 @@ async function loadSubscriptions(){
   subscriptionRecords=data || [];
 
   renderSubscriptions();
-  saveCachedData();
 
 }
 
@@ -2355,6 +2376,8 @@ function updateDashboard(){
     expired;
 
 
+  renderSubscriptionAlerts();
+
 }
 
 
@@ -2389,15 +2412,8 @@ function getSubscriptionStatus(
   }
 
 
-  // If Supabase stores a date without a time (YYYY-MM-DD), keep it active
-  // through that calendar day and mark expired after 11:59:59 PM local time.
-  let expiryDate;
-  if(typeof expiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expiry)){
-    const [year, month, day] = expiry.split('-').map(Number);
-    expiryDate = new Date(year, month - 1, day, 23, 59, 59, 999);
-  }else{
-    expiryDate = new Date(expiry);
-  }
+  const expiryDate =
+    new Date(expiry);
 
   const now =
     new Date();
@@ -2787,11 +2803,9 @@ supabaseClient.auth.onAuthStateChange(
 
 
     if(event === 'SIGNED_OUT'){
-      try{ sessionStorage.removeItem(ADMIN_CACHE_KEY); }catch(e){}
-      paymentRecords=[];
-      teacherRecords=[];
-      subscriptionRecords=[];
+
       showLogin();
+
     }
 
   }
