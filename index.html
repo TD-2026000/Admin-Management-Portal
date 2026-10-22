@@ -776,9 +776,9 @@ th{
               <tr>
                 <th>Teacher</th>
                 <th>Email</th>
-                <th>Payment Method</th>
+                <th>Method</th>
                 <th>Amount</th>
-                <th>Reference Number</th>
+                <th>Reference</th>
                 <th>Date Submitted</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -793,7 +793,7 @@ th{
                   colspan="8"
                   class="empty"
                 >
-                  No pending payment submissions.
+                  Loading payment submissions...
                 </td>
               </tr>
 
@@ -859,7 +859,7 @@ th{
                   colspan="8"
                   class="empty"
                 >
-                  No payment submissions yet.
+                  Loading payment submissions...
                 </td>
               </tr>
 
@@ -921,7 +921,7 @@ th{
                   colspan="5"
                   class="empty"
                 >
-                  No teachers found.
+                  Loading registered teachers...
                 </td>
               </tr>
 
@@ -977,7 +977,7 @@ th{
                   colspan="6"
                   class="empty"
                 >
-                  No subscription records yet.
+                  Loading subscriptions...
                 </td>
               </tr>
 
@@ -1124,11 +1124,6 @@ const paymentSupabaseClient =
 let paymentRecords = [];
 let teacherRecords = [];
 let subscriptionRecords = [];
-
-// Prevent duplicate page loads from the initial session check and auth event.
-let adminPortalVisible = false;
-let allDataLoadPromise = null;
-let lastSuccessfulLoadAt = 0;
 
 
 /* =====================================================
@@ -1304,8 +1299,6 @@ async function checkAdminSession(){
 
 function showLogin(){
 
-  adminPortalVisible = false;
-
   document
     .getElementById('loginPage')
     .classList.remove('hidden');
@@ -1323,16 +1316,21 @@ function showLogin(){
 
 function showAdminPortal(user){
 
-  document.getElementById('loginPage').classList.add('hidden');
-  document.getElementById('adminPage').classList.remove('hidden');
-  document.getElementById('adminEmailDisplay').textContent = user.email || ADMIN_EMAIL;
+  document
+    .getElementById('loginPage')
+    .classList.add('hidden');
 
-  // Auth can emit INITIAL_SESSION and TOKEN_REFRESHED close together.
-  // Only start the initial load when the portal first becomes visible.
-  if(!adminPortalVisible){
-    adminPortalVisible = true;
-    loadAllData();
-  }
+  document
+    .getElementById('adminPage')
+    .classList.remove('hidden');
+
+  document
+    .getElementById('adminEmailDisplay')
+    .textContent =
+    user.email || ADMIN_EMAIL;
+
+  loadAllData();
+
 }
 
 
@@ -1355,7 +1353,6 @@ async function adminLogout(){
 
   }
 
-  adminPortalVisible = false;
   showLogin();
 
 }
@@ -1435,23 +1432,28 @@ function showTabById(tab){
    LOAD ALL DATA
 ===================================================== */
 
+let loadAllDataPromise = null;
+
 async function loadAllData(){
 
-  // If a refresh is already running, reuse it instead of firing duplicate
-  // requests that can race and briefly replace populated tables with empty ones.
-  if(allDataLoadPromise) return allDataLoadPromise;
+  // Auth can fire both from getSession() and onAuthStateChange().
+  // Reuse the same in-flight refresh instead of racing two requests.
+  if(loadAllDataPromise) return loadAllDataPromise;
 
-  allDataLoadPromise = (async()=>{
-    try{
-      await Promise.all([loadPayments(), loadTeachers(), loadSubscriptions()]);
-      updateDashboard();
-      lastSuccessfulLoadAt = Date.now();
-    }finally{
-      allDataLoadPromise = null;
-    }
+  loadAllDataPromise = (async () => {
+    await Promise.all([
+      loadPayments(),
+      loadTeachers(),
+      loadSubscriptions()
+    ]);
+    updateDashboard();
   })();
 
-  return allDataLoadPromise;
+  try {
+    await loadAllDataPromise;
+  } finally {
+    loadAllDataPromise = null;
+  }
 }
 
 
@@ -1501,11 +1503,9 @@ async function loadPayments(){
 
     console.error('Teacher Portal payments error:',error);
 
-    // Preserve the last successfully loaded records so a transient request
-    // error does not make the table appear empty for several seconds.
-    renderPayments();
-
-    showToast('Unable to refresh payments. Showing the last loaded records.');
+    // Keep the last successfully loaded records on screen during a temporary
+    // network/RLS error; don't flash an empty table and mislead the admin.
+    showToast('Unable to refresh Teacher Portal payments: ' + error.message);
     return;
   }
 
@@ -1645,37 +1645,31 @@ function renderPayments(){
       .join('');
 
 
-  // Dashboard shows only payments that still need admin review.
-  // Verified and rejected submissions disappear from this short list,
-  // but remain available in the full Payment Submissions tab.
   const pendingRecent = paymentRecords
     .filter(payment => String(payment.status || 'PENDING').trim().toUpperCase() === 'PENDING')
-    .slice(0, 5);
+    .slice(0,5);
 
   recent.innerHTML = pendingRecent.length
-    ? pendingRecent.map(payment => `
-        <tr>
-          <td>${escapeHtml(payment.teacher_name || '—')}</td>
-          <td>${escapeHtml(payment.teacher_email || '—')}</td>
-          <td>${escapeHtml(payment.payment_method || '—')}</td>
-          <td>₱${escapeHtml(payment.amount ?? '99')}</td>
-          <td>${escapeHtml(payment.reference_number || '—')}</td>
-          <td>${formatDate(payment.created_at)}</td>
-          <td><span class="badge ${statusClass('PENDING')}">PENDING</span></td>
-          <td>
-            <div class="action-group">
-              <button class="btn view" onclick="viewPayment('${payment.id}')">VIEW DETAILS</button>
-              <button class="btn verify" onclick="verifyPayment('${payment.id}')">VERIFY</button>
-              <button class="btn reject" onclick="rejectPayment('${payment.id}')">REJECT</button>
-            </div>
-          </td>
-        </tr>
-      `).join('')
+    ? pendingRecent.map(payment => {
+        const status = String(payment.status || 'PENDING').toUpperCase();
+        return `
+          <tr>
+            <td>${escapeHtml(payment.teacher_name || '—')}</td>
+            <td>${escapeHtml(payment.teacher_email || '—')}</td>
+            <td>${escapeHtml(payment.payment_method || '—')}</td>
+            <td>₱${escapeHtml(payment.amount ?? '99')}</td>
+            <td>${escapeHtml(payment.reference_number || '—')}</td>
+            <td>${formatDate(payment.created_at)}</td>
+            <td><span class="badge ${statusClass(status)}">${status}</span></td>
+            <td><button class="btn view" onclick="viewPayment('${payment.id}')">VIEW DETAILS</button></td>
+          </tr>
+        `;
+      }).join('')
     : `
-        <tr>
-          <td colspan="8" class="empty">No pending payment submissions. All submitted payments have been reviewed.</td>
-        </tr>
-      `;
+      <tr>
+        <td colspan="8" class="empty">No pending payment submissions. All submitted payments have been reviewed.</td>
+      </tr>
+    `;
 
 }
 
@@ -2049,9 +2043,8 @@ async function loadTeachers(){
       error.message
     );
 
-    // Keep previously loaded teacher rows visible on transient failures.
-    renderTeachers();
-
+    // Preserve the last successful list if a refresh temporarily fails.
+    showToast('Unable to refresh registered teachers: ' + error.message);
     return;
   }
 
@@ -2089,10 +2082,12 @@ function renderTeachers(){
     teacherRecords
       .map(teacher => {
 
-        const teacherExpiry = teacher.subscription_expiry || teacher.expiry_date || null;
-        const status = teacherExpiry
-          ? getSubscriptionStatus(teacherExpiry, teacher.subscription_status || teacher.status || 'INACTIVE')
-          : String(teacher.subscription_status || teacher.status || 'INACTIVE').toUpperCase();
+        const status =
+          String(
+            teacher.subscription_status ||
+            teacher.status ||
+            'INACTIVE'
+          ).toUpperCase();
 
 
         return `
@@ -2168,9 +2163,8 @@ async function loadSubscriptions(){
       error.message
     );
 
-    // Keep previously loaded subscription rows visible on transient failures.
-    renderSubscriptions();
-
+    // Preserve the last successful list if a refresh temporarily fails.
+    showToast('Unable to refresh subscriptions: ' + error.message);
     return;
   }
 
@@ -2376,19 +2370,17 @@ function getSubscriptionStatus(
   }
 
 
-  // If Supabase stores expiry as YYYY-MM-DD, treat that date as valid
-  // through 11:59:59.999 PM in the user's local timezone.
   let expiryDate;
-  const expiryText = String(expiry).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(expiryText)) {
-    const parts = expiryText.split('-').map(Number);
-    expiryDate = new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999);
-  } else {
-    expiryDate = new Date(expiryText);
+  if(typeof expiry === 'string' && /^\d{4}-\d{2}-\d{2}/.test(expiry)){
+    // Subscription expiry is inclusive through the end of that calendar day.
+    // For YYYY-MM-DD (or timestamp values beginning with it), use local time.
+    const [year, month, day] = expiry.slice(0,10).split('-').map(Number);
+    expiryDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+  }else{
+    expiryDate = new Date(expiry);
   }
 
-  const now =
-    new Date();
+  const now = new Date();
 
 
   if(
@@ -2465,6 +2457,93 @@ function statusClass(status){
 
 
   return 'pending';
+
+}
+
+
+/* =====================================================
+   SUBSCRIPTION ALERTS
+===================================================== */
+
+function renderSubscriptionAlerts(){
+
+  const box =
+    document.getElementById(
+      'subscriptionAlerts'
+    );
+
+
+  const alerts =
+    subscriptionRecords
+      .map(sub => {
+
+        const status =
+          getSubscriptionStatus(
+            sub.subscription_expiry,
+            sub.status
+          );
+
+
+        if(
+          status !== 'EXPIRING SOON' &&
+          status !== 'EXPIRED'
+        ){
+
+          return null;
+
+        }
+
+
+        return `
+          <div
+            style="
+              padding:15px;
+              border-radius:10px;
+              background:${
+                status === 'EXPIRED'
+                ? '#fee2e2'
+                : '#fef3c7'
+              };
+              margin-bottom:10px;
+            "
+          >
+
+            <strong>
+              ${escapeHtml(
+                sub.teacher_name ||
+                sub.teacher_email ||
+                'Teacher'
+              )}
+            </strong>
+
+            — Subscription
+
+            <strong>
+              ${status}
+            </strong>
+
+            <br>
+
+            Expiry:
+            ${formatDate(
+              sub.subscription_expiry
+            )}
+
+          </div>
+        `;
+
+      })
+      .filter(Boolean);
+
+
+  box.innerHTML =
+    alerts.length
+      ? alerts.join('')
+      : `
+        <div class="empty">
+          No subscription alerts.
+        </div>
+      `;
 
 }
 
@@ -2667,20 +2746,34 @@ function viewSubscription(id){
    AUTH STATE
 ===================================================== */
 
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  const user = session?.user;
+supabaseClient.auth.onAuthStateChange(
+  (event,session) => {
 
-  if(user && user.email && user.email.toLowerCase() === ADMIN_EMAIL){
-    // showAdminPortal has an internal guard against duplicate initial loads.
-    showAdminPortal(user);
-    return;
-  }
+    const user =
+      session?.user;
 
-  if(event === 'SIGNED_OUT' || event === 'USER_DELETED'){
-    adminPortalVisible = false;
-    showLogin();
+
+    if(
+      user &&
+      user.email &&
+      user.email.toLowerCase() ===
+      ADMIN_EMAIL
+    ){
+
+      showAdminPortal(user);
+
+      return;
+    }
+
+
+    if(event === 'SIGNED_OUT'){
+
+      showLogin();
+
+    }
+
   }
-});
+);
 
 
 /* =====================================================
