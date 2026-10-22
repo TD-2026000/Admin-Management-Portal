@@ -778,10 +778,8 @@ th{
                 <th>Email</th>
                 <th>Method</th>
                 <th>Amount</th>
-                <th>Reference Number</th>
-                <th>Date Submitted</th>
+                <th>Date</th>
                 <th>Status</th>
-                <th>Action</th>
               </tr>
 
             </thead>
@@ -790,10 +788,10 @@ th{
 
               <tr>
                 <td
-                  colspan="8"
+                  colspan="6"
                   class="empty"
                 >
-                  No pending payment submissions.
+                  No payment submissions yet.
                 </td>
               </tr>
 
@@ -805,6 +803,26 @@ th{
 
       </div>
 
+
+      <div class="panel">
+
+        <div class="panel-header">
+
+          <h2>
+            Subscription Alerts
+          </h2>
+
+        </div>
+
+        <div id="subscriptionAlerts">
+
+          <div class="empty">
+            No subscription alerts.
+          </div>
+
+        </div>
+
+      </div>
 
     </section>
 
@@ -1124,8 +1142,6 @@ const paymentSupabaseClient =
 let paymentRecords = [];
 let teacherRecords = [];
 let subscriptionRecords = [];
-let loadAllDataPromise = null;
-let activeAdminUserId = null;
 
 
 /* =====================================================
@@ -1331,12 +1347,6 @@ function showAdminPortal(user){
     .textContent =
     user.email || ADMIN_EMAIL;
 
-  // Supabase may emit the same session more than once on startup.
-  // Avoid starting duplicate requests that can briefly blank the dashboard.
-  if(activeAdminUserId === user.id && loadAllDataPromise){
-    return;
-  }
-  activeAdminUserId = user.id;
   loadAllData();
 
 }
@@ -1442,22 +1452,14 @@ function showTabById(tab){
 
 async function loadAllData(){
 
-  if(loadAllDataPromise) return loadAllDataPromise;
+  await Promise.all([
+    loadPayments(),
+    loadTeachers(),
+    loadSubscriptions()
+  ]);
 
-  loadAllDataPromise = (async()=>{
-    await Promise.all([
-      loadPayments(),
-      loadTeachers(),
-      loadSubscriptions()
-    ]);
-    updateDashboard();
-  })();
+  updateDashboard();
 
-  try{
-    await loadAllDataPromise;
-  }finally{
-    loadAllDataPromise = null;
-  }
 }
 
 
@@ -1507,7 +1509,7 @@ async function loadPayments(){
 
     console.error('Teacher Portal payments error:',error);
 
-    // Preserve the last successfully loaded records during a temporary error.
+    paymentRecords=[];
     renderPayments();
 
     showToast('Unable to load Teacher Portal payments: ' + error.message);
@@ -1544,8 +1546,8 @@ function renderPayments(){
 
     recent.innerHTML=`
       <tr>
-        <td colspan="8" class="empty">
-          No pending payment submissions.
+        <td colspan="6" class="empty">
+          No payment submissions yet.
         </td>
       </tr>
     `;
@@ -1650,20 +1652,9 @@ function renderPayments(){
       .join('');
 
 
-  const pendingRecentPayments = paymentRecords.filter(payment =>
-    String(payment.status || 'PENDING').trim().toUpperCase() === 'PENDING'
-  );
-
-  if(!pendingRecentPayments.length){
-    recent.innerHTML = `
-      <tr><td colspan="8" class="empty">
-        No payments need verification.
-      </td></tr>`;
-    return;
-  }
-
   recent.innerHTML =
-    pendingRecentPayments
+    paymentRecords
+      .slice(0,5)
       .map(payment => {
 
         const status =
@@ -1699,23 +1690,15 @@ function renderPayments(){
             </td>
 
             <td>
-              ${escapeHtml(payment.reference_number || '—')}
-            </td>
-
-            <td>
-              ${formatDate(payment.created_at)}
+              ${formatDate(
+                payment.created_at
+              )}
             </td>
 
             <td>
               <span class="badge ${statusClass(status)}">
                 ${status}
               </span>
-            </td>
-
-            <td>
-              <button class="btn view" onclick="viewPayment('${payment.id}')">
-                VIEW DETAILS
-              </button>
             </td>
 
           </tr>
@@ -2096,7 +2079,8 @@ async function loadTeachers(){
       error.message
     );
 
-    // Keep the last successful list visible during temporary fetch errors.
+    teacherRecords=[];
+
     renderTeachers();
 
     return;
@@ -2217,7 +2201,8 @@ async function loadSubscriptions(){
       error.message
     );
 
-    // Keep the last successful list visible during temporary fetch errors.
+    subscriptionRecords=[];
+
     renderSubscriptions();
 
     return;
@@ -2391,6 +2376,8 @@ function updateDashboard(){
     expired;
 
 
+  renderSubscriptionAlerts();
+
 }
 
 
@@ -2398,33 +2385,71 @@ function updateDashboard(){
    SUBSCRIPTION STATUS
 ===================================================== */
 
-function getSubscriptionStatus(expiry, storedStatus){
-  if(storedStatus && String(storedStatus).toUpperCase() === 'CANCELLED'){
+function getSubscriptionStatus(
+  expiry,
+  storedStatus
+){
+
+  if(
+    storedStatus &&
+    String(storedStatus)
+      .toUpperCase() ===
+    'CANCELLED'
+  ){
+
     return 'CANCELLED';
+
   }
+
+
   if(!expiry){
-    return String(storedStatus || 'INACTIVE').toUpperCase();
+
+    return String(
+      storedStatus ||
+      'INACTIVE'
+    ).toUpperCase();
+
   }
 
-  const expiryText = String(expiry);
-  const expiryDate = new Date(expiryText);
-  const now = new Date();
-  if(Number.isNaN(expiryDate.getTime())){
-    return String(storedStatus || 'INACTIVE').toUpperCase();
+
+  const expiryDate =
+    new Date(expiry);
+
+  const now =
+    new Date();
+
+
+  if(
+    expiryDate.getTime() <=
+    now.getTime()
+  ){
+
+    return 'EXPIRED';
+
   }
 
-  // Date-only expiry is valid through 11:59:59 PM local time on that date.
-  if(/^\d{4}-\d{2}-\d{2}$/.test(expiryText)){
-    const parts = expiryText.split('-').map(Number);
-    expiryDate.setFullYear(parts[0], parts[1]-1, parts[2]);
-    expiryDate.setHours(23,59,59,999);
+
+  const days =
+    Math.ceil(
+      (
+        expiryDate.getTime() -
+        now.getTime()
+      ) /
+      86400000
+    );
+
+
+  if(days <= 7){
+
+    return 'EXPIRING SOON';
+
   }
 
-  if(expiryDate.getTime() <= now.getTime()) return 'EXPIRED';
-  const days = Math.ceil((expiryDate.getTime() - now.getTime()) / 86400000);
-  if(days <= 7) return 'EXPIRING SOON';
+
   return 'ACTIVE';
+
 }
+
 
 /* =====================================================
    STATUS CLASS
@@ -2778,8 +2803,9 @@ supabaseClient.auth.onAuthStateChange(
 
 
     if(event === 'SIGNED_OUT'){
-      activeAdminUserId = null;
+
       showLogin();
+
     }
 
   }
