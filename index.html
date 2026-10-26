@@ -1785,9 +1785,40 @@ async function verifyPayment(id){
     return;
   }
 
+  // Activate a one-month subscription in the same tables the Teacher Portal checks.
+  // Preserve existing payment rows; only update this payment and the subscription state.
+  const userId=payment.user_id;
+  if(userId){
+    const startedAt=new Date();
+    const expiresAt=new Date(startedAt);
+    expiresAt.setMonth(expiresAt.getMonth()+1);
+    const {data:existingSub,error:readSubError}=await supabaseClient
+      .from('subscriptions').select('id').eq('user_id',userId)
+      .order('created_at',{ascending:false}).limit(1).maybeSingle();
+    if(readSubError){
+      showToast('Payment verified, but subscription activation could not be checked: '+readSubError.message);
+      return;
+    }
+    const subPayload={user_id:userId,status:'ACTIVE',plan_name:'Monthly Subscription',price:Number(payment.amount||69),expiry_date:expiresAt.toISOString()};
+    const subResult=existingSub
+      ? await supabaseClient.from('subscriptions').update(subPayload).eq('id',existingSub.id)
+      : await supabaseClient.from('subscriptions').insert([subPayload]);
+    if(subResult.error){
+      showToast('Payment verified, but monthly access could not be activated: '+subResult.error.message);
+      return;
+    }
+    const {error:profileError}=await supabaseClient.from('profiles').update({access_status:'ACTIVE'}).eq('id',userId);
+    if(profileError){
+      showToast('Payment verified and subscription saved, but profile access status could not be updated: '+profileError.message);
+      return;
+    }
+  }else{
+    showToast('Payment verified, but no user ID was linked to this payment, so subscription activation was skipped.');
+    return;
+  }
 
   showToast(
-    'Payment verified successfully.'
+    'Payment approved. Teacher access activated for one month.'
   );
 
   closePaymentModal();
