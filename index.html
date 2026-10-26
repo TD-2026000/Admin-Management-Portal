@@ -1096,7 +1096,7 @@ const supabaseClient =
 /* =====================================================
    TEACHER PORTAL PAYMENT DATABASE
    The Teacher Portal submits payments to this project.
-   Keep the Admin Portal auth/database above unchanged.
+   Payment reads now reuse the signed-in admin client so RLS can recognize the admin session.
 ===================================================== */
 const PAYMENT_SUPABASE_URL =
   'https://ifaptabszmvxgaltmrnh.supabase.co';
@@ -1104,18 +1104,11 @@ const PAYMENT_SUPABASE_URL =
 const PAYMENT_SUPABASE_PUBLISHABLE_KEY =
   'sb_publishable_XWdNI0Jix2y_TGMVOAfYjA_bADlqGpq';
 
-const paymentSupabaseClient =
-  window.supabase.createClient(
-    PAYMENT_SUPABASE_URL,
-    PAYMENT_SUPABASE_PUBLISHABLE_KEY,
-    {
-      auth:{
-        persistSession:false,
-        autoRefreshToken:false,
-        detectSessionInUrl:false
-      }
-    }
-  );
+// Reuse the admin-authenticated Supabase client for payment reads.
+// The previous separate anonymous client could not see rows protected by
+// RLS policies that allow authenticated users only. This does not bypass RLS;
+// the Supabase policies must still permit the admin account to SELECT rows.
+const paymentSupabaseClient = supabaseClient;
 
 
 /* =====================================================
