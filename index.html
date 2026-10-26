@@ -1453,16 +1453,24 @@ function restoreCachedData(){
 
 function saveCachedData(){
   try{
-    // Do not cache payment proof files/screenshots in browser storage.
-    const safePayments = paymentRecords.map(({proof_data, ...payment}) => payment);
-    sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({
+    // Keep only compact display fields in session storage. Payment proof data,
+    // raw notes (which may contain base64 images), and oversized teacher lists
+    // can exceed the browser's storage quota. This cache is only a convenience;
+    // Supabase remains the source of truth.
+    const safePayments = paymentRecords.map(({proof_data, notes, ...payment}) => payment);
+    const safeTeachers = teacherRecords.map(({...teacher}) => teacher);
+    const safeSubscriptions = subscriptionRecords.map(({...sub}) => sub);
+    const payload = JSON.stringify({
       payments: safePayments,
-      teachers: teacherRecords,
-      subscriptions: subscriptionRecords,
+      teachers: safeTeachers,
+      subscriptions: safeSubscriptions,
       savedAt: Date.now()
-    }));
+    });
+    // Avoid filling sessionStorage with a large payload.
+    if (payload.length < 350000) sessionStorage.setItem(ADMIN_CACHE_KEY, payload);
+    else console.warn('Admin cache skipped because the compact payload is too large.');
   }catch(err){
-    console.warn('Unable to cache admin data:', err);
+    console.warn('Unable to cache admin data (database records are unaffected):', err);
   }
 }
 
@@ -1495,7 +1503,7 @@ function normalizePaymentRecord(row){
 
   return {
     ...row,
-    teacher_name: row?.teacher_name || noteData.teacher_name || noteData.name || row?.email || noteData.email || '—',
+    teacher_name: row?.teacher_name || noteData.teacher_name || noteData.name || row?.email || noteData.email || row?.user_id || '—',
     teacher_email: row?.teacher_email || row?.email || noteData.email || '—',
     payment_method: row?.payment_method || '—',
     amount: row?.amount ?? 69,
@@ -1516,18 +1524,25 @@ async function loadPayments(){
   let data = null;
   let error = null;
 
+  // Fetch only columns confirmed to exist in public.payments. Avoid select('*'):
+  // the notes field may contain large encoded proof images, which can make the
+  // REST response slow and cause PostgreSQL statement timeouts.
   const first = await paymentSupabaseClient
     .from('payments')
-    .select('*')
-    .order('created_at', { ascending:false });
+    .select('id,user_id,payment_type,amount,payment_method,reference_number,payment_date,status,created_at')
+    .order('created_at', { ascending:false })
+    .limit(100);
 
   data = first.data;
   error = first.error;
 
-  // Compatibility fallback for projects whose table has no created_at column.
-  if(error){
+  // If created_at is unavailable in a different deployment, retry without sort.
+  if(error && /created_at|column/i.test(String(error.message || ''))){
     console.error('Payments query with created_at ordering failed:', error);
-    const fallback = await paymentSupabaseClient.from('payments').select('*');
+    const fallback = await paymentSupabaseClient
+      .from('payments')
+      .select('id,user_id,payment_type,amount,payment_method,reference_number,payment_date,status')
+      .limit(100);
     data = fallback.data;
     error = fallback.error;
   }
@@ -1557,7 +1572,7 @@ async function loadPayments(){
 
   paymentRecords = [];
   renderPayments();
-  showToast('No payment records are visible in the database yet. Existing records may be in another browser session or database project.');
+  showToast('No payment rows were returned by this query. Check the admin SELECT policy and project connection.');
 }
 
 
