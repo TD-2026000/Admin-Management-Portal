@@ -25,6 +25,13 @@ body{
   display:none!important;
 }
 
+
+/* Dashboard subscription alerts */
+.expiring-panel{margin-top:22px;border-top:4px solid #f59e0b}
+.section-note{font-size:13px;color:#6b7280;margin-top:6px;line-height:1.5}
+.days-left{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;background:#fff7ed;color:#c2410c;font-weight:700;font-size:12px;white-space:nowrap}
+.days-left.urgent{background:#fee2e2;color:#b91c1c}
+
 /* =========================
    LOGIN
 ========================= */
@@ -805,6 +812,21 @@ th{
 
       </div>
 
+      <div class="panel expiring-panel">
+        <div class="panel-header">
+          <div>
+            <h2>⏳ Teachers Expiring Within 7 Days</h2>
+            <p class="section-note">Subscriptions with 7 days or less remaining appear here automatically.</p>
+          </div>
+          <button class="btn view" onclick="showTabById('subscriptions')">MANAGE SUBSCRIPTIONS</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Teacher</th><th>Email</th><th>Expiry Date</th><th>Time Remaining</th><th>Status</th></tr></thead>
+            <tbody id="expiringTeachersTable"><tr><td colspan="5" class="empty">No subscriptions expiring within 7 days.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
 
     </section>
 
@@ -1529,7 +1551,7 @@ async function loadPayments(){
   // REST response slow and cause PostgreSQL statement timeouts.
   const first = await paymentSupabaseClient
     .from('payments')
-    .select('id,user_id,payment_type,amount,payment_method,reference_number,payment_date,status,created_at')
+    .select('id,user_id,payment_type,amount,payment_method,reference_number,payment_date,status,created_at,teacher_name,teacher_email,email')
     .order('created_at', { ascending:false })
     .limit(100);
 
@@ -1892,7 +1914,7 @@ async function rejectPayment(id){
    VIEW PAYMENT
 ===================================================== */
 
-function viewPayment(id){
+async function viewPayment(id){
 
   const payment =
     paymentRecords.find(
@@ -1903,6 +1925,34 @@ function viewPayment(id){
 
   if(!payment) return;
 
+  // Proof images are stored in notes on some older submissions. Fetch only when
+  // the admin opens details so the main payment list stays lightweight.
+  try{
+    const detailResult = await paymentSupabaseClient.from('payments')
+      .select('id,user_id,notes,teacher_name,teacher_email,email,proof_data,proof_name,payment_note')
+      .eq('id',id).maybeSingle();
+    if(!detailResult.error && detailResult.data){
+      const row=detailResult.data;
+      let noteData={};
+      try{noteData=row.notes ? JSON.parse(row.notes) : {};}catch(e){noteData={note:String(row.notes||'')};}
+      Object.assign(payment,{
+        teacher_name:row.teacher_name || noteData.teacher_name || noteData.name || payment.teacher_name,
+        teacher_email:row.teacher_email || row.email || noteData.email || payment.teacher_email,
+        proof_data:row.proof_data || noteData.proof_data || noteData.proof || '',
+        proof_name:row.proof_name || noteData.proof_name || noteData.file_name || '',
+        payment_note:row.payment_note || noteData.note || payment.payment_note || ''
+      });
+    }else if(detailResult.error){
+      console.warn('Could not load payment proof details:',detailResult.error.message);
+    }
+  }catch(detailError){console.warn('Payment detail lookup failed:',detailError);}
+
+  // Fill missing teacher identity from the registered profile matching auth user ID.
+  const profile=teacherRecords.find(t=>String(t.user_id||'')===String(payment.user_id||''));
+  if(profile){
+    payment.teacher_name=payment.teacher_name && payment.teacher_name!=='—' ? payment.teacher_name : (profile.full_name || profile.teacher_name || '—');
+    payment.teacher_email=payment.teacher_email && payment.teacher_email!=='—' ? payment.teacher_email : (profile.email || '—');
+  }
 
   const status =
     String(
@@ -2106,40 +2156,21 @@ function closeModalOutside(event){
 ===================================================== */
 
 async function loadTeachers(){
-
-  const {
-    data,
-    error
-  } =
-  await supabaseClient
-    .from('teacher_profiles')
-    .select('*')
-    .order('created_at',{
-      ascending:false
-    });
-
-
-  if(error){
-
-    console.log(
-      'Teacher table:',
-      error.message
-    );
-
-    // Preserve the last known list during a temporary Supabase error.
+  // Teacher Portal stores registered teacher profiles by auth user_id.
+  let result = await supabaseClient.from('teacher_profiles').select('*');
+  if(result.error){
+    console.error('Unable to load teacher_profiles:', result.error.message);
+    showToast('Registered Teachers could not load: ' + result.error.message);
     renderTeachers();
-
     return;
   }
-
-
-  teacherRecords=data || [];
-
+  teacherRecords = result.data || [];
+  // Attach current auth emails from payment records where available; profiles may omit email in older rows.
+  const paymentEmails = new Map(paymentRecords.map(p => [String(p.user_id||''), p.teacher_email || p.email || '']));
+  teacherRecords = teacherRecords.map(t => ({...t, email:t.email || paymentEmails.get(String(t.user_id||'')) || ''}));
   renderTeachers();
   saveCachedData();
-
 }
-
 
 function renderTeachers(){
 
@@ -2182,6 +2213,7 @@ function renderTeachers(){
               ${escapeHtml(
                 teacher.full_name ||
                 teacher.teacher_name ||
+                teacher.profile_data?.username ||
                 '—'
               )}
             </td>
@@ -2228,40 +2260,24 @@ function renderTeachers(){
 ===================================================== */
 
 async function loadSubscriptions(){
-
-  const {
-    data,
-    error
-  } =
-  await supabaseClient
-    .from('teacher_subscriptions')
-    .select('*')
-    .order('subscription_expiry',{
-      ascending:true
-    });
-
-
-  if(error){
-
-    console.log(
-      'Subscription table:',
-      error.message
-    );
-
-    // Preserve the last known list during a temporary Supabase error.
+  // Teacher Portal uses public.subscriptions (expiry_date), not teacher_subscriptions.
+  const result = await supabaseClient.from('subscriptions').select('*').order('created_at',{ascending:false}).limit(200);
+  if(result.error){
+    console.error('Unable to load subscriptions:', result.error.message);
+    showToast('Subscription Management could not load: ' + result.error.message);
     renderSubscriptions();
-
     return;
   }
-
-
-  subscriptionRecords=data || [];
-
+  const rows = result.data || [];
+  const profileByUser = new Map(teacherRecords.map(t => [String(t.user_id||''), t]));
+  subscriptionRecords = rows.map(sub => {
+    const profile = profileByUser.get(String(sub.user_id||'')) || {};
+    const payment = paymentRecords.find(p => String(p.user_id||'') === String(sub.user_id||'')) || {};
+    return {...sub, teacher_name: sub.teacher_name || profile.full_name || profile.teacher_name || payment.teacher_name || '—', teacher_email: sub.teacher_email || profile.email || payment.teacher_email || '—', subscription_expiry: sub.subscription_expiry || sub.expiry_date || null};
+  });
   renderSubscriptions();
   saveCachedData();
-
 }
-
 
 function renderSubscriptions(){
 
@@ -2422,9 +2438,43 @@ function updateDashboard(){
   ).textContent =
     expired;
 
+  renderExpiringTeachers();
 
 }
 
+
+/* Show subscriptions expiring today through the next 7 days. */
+function renderExpiringTeachers(){
+  const table = document.getElementById('expiringTeachersTable');
+  if(!table) return;
+  const now = new Date();
+  const expiring = subscriptionRecords.filter(sub => {
+    if(!sub.subscription_expiry) return false;
+    const status = getSubscriptionStatus(sub.subscription_expiry, sub.status);
+    if(status !== 'EXPIRING SOON') return false;
+    let expiryDate;
+    if(typeof sub.subscription_expiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sub.subscription_expiry)){
+      const [y,m,d] = sub.subscription_expiry.split('-').map(Number);
+      expiryDate = new Date(y,m-1,d,23,59,59,999);
+    } else { expiryDate = new Date(sub.subscription_expiry); }
+    return !Number.isNaN(expiryDate.getTime()) && expiryDate >= now;
+  }).sort((a,b) => new Date(a.subscription_expiry) - new Date(b.subscription_expiry));
+
+  if(!expiring.length){
+    table.innerHTML = '<tr><td colspan="5" class="empty">No subscriptions expiring within 7 days.</td></tr>';
+    return;
+  }
+  table.innerHTML = expiring.map(sub => {
+    let expiryDate;
+    if(typeof sub.subscription_expiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sub.subscription_expiry)){
+      const [y,m,d] = sub.subscription_expiry.split('-').map(Number);
+      expiryDate = new Date(y,m-1,d,23,59,59,999);
+    } else { expiryDate = new Date(sub.subscription_expiry); }
+    const days = Math.max(0, Math.ceil((expiryDate.getTime()-now.getTime())/86400000));
+    const remaining = days === 0 ? 'Expires today' : `${days} day${days===1?'':'s'} left`;
+    return `<tr><td>${escapeHtml(sub.teacher_name || '—')}</td><td>${escapeHtml(sub.teacher_email || '—')}</td><td>${escapeHtml(formatDate(sub.subscription_expiry))}</td><td><span class="days-left ${days<=2?'urgent':''}">${remaining}</span></td><td><span class="badge ${statusClass('EXPIRING SOON')}">EXPIRING SOON</span></td></tr>`;
+  }).join('');
+}
 
 /* =====================================================
    SUBSCRIPTION STATUS
