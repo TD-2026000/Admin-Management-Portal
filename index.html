@@ -1499,11 +1499,10 @@ function saveCachedData(){
 async function loadAllData(){
   // Show the last successful view immediately, then refresh from Supabase.
   restoreCachedData();
-  await Promise.allSettled([
-    loadPayments(),
-    loadTeachers(),
-    loadSubscriptions()
-  ]);
+  // Load in dependency order so teacher identity matching can use freshly loaded payments and profiles.
+  await loadPayments();
+  await loadTeachers();
+  await loadSubscriptions();
   updateDashboard();
   saveCachedData();
 }
@@ -2156,18 +2155,52 @@ function closeModalOutside(event){
 ===================================================== */
 
 async function loadTeachers(){
-  // Teacher Portal stores registered teacher profiles by auth user_id.
-  let result = await supabaseClient.from('teacher_profiles').select('*');
-  if(result.error){
-    console.error('Unable to load teacher_profiles:', result.error.message);
-    showToast('Registered Teachers could not load: ' + result.error.message);
-    renderTeachers();
-    return;
+  // Build one identity map from the same user_id/auth id used by Teacher Portal.
+  // Use select('*') to avoid failing when optional profile columns differ by deployment.
+  const [teacherResult, profileResult] = await Promise.all([
+    supabaseClient.from('teacher_profiles').select('*'),
+    supabaseClient.from('profiles').select('*')
+  ]);
+  if(teacherResult.error) console.error('Unable to load teacher_profiles:', teacherResult.error.message);
+  if(profileResult.error) console.error('Unable to load profiles:', profileResult.error.message);
+  const baseTeachers = teacherResult.error ? [] : (teacherResult.data || []);
+  const profileRows = profileResult.error ? [] : (profileResult.data || []);
+  const byId = new Map();
+  for(const t of baseTeachers){
+    const id=String(t.user_id || t.id || '');
+    if(id) byId.set(id,{...t,user_id:id});
   }
-  teacherRecords = result.data || [];
-  // Attach current auth emails from payment records where available; profiles may omit email in older rows.
-  const paymentEmails = new Map(paymentRecords.map(p => [String(p.user_id||''), p.teacher_email || p.email || '']));
-  teacherRecords = teacherRecords.map(t => ({...t, email:t.email || paymentEmails.get(String(t.user_id||'')) || ''}));
+  for(const profile of profileRows){
+    const id=String(profile.id || profile.user_id || '');
+    if(!id) continue;
+    const prior=byId.get(id) || {user_id:id};
+    let extra={};
+    if(profile.profile_data){
+      try{ extra=typeof profile.profile_data==='string' ? JSON.parse(profile.profile_data) : profile.profile_data; }catch(e){}
+    }
+    byId.set(id,{...prior,...profile,...extra,user_id:id,
+      full_name:prior.full_name || profile.full_name || profile.teacher_name || extra.full_name || extra.name || extra.username,
+      email:prior.email || profile.email || profile.teacher_email || extra.email,
+      access_status:profile.access_status || prior.access_status
+    });
+  }
+  // Payment records provide a fallback identity for users who have submitted a payment.
+  for(const payment of paymentRecords){
+    const id=String(payment.user_id || '');
+    if(!id) continue;
+    const prior=byId.get(id) || {user_id:id};
+    let noteData={};
+    try{noteData=payment.notes ? JSON.parse(payment.notes) : {};}catch(e){}
+    byId.set(id,{...prior,
+      full_name:prior.full_name || payment.teacher_name || noteData.teacher_name || noteData.full_name,
+      email:prior.email || payment.teacher_email || payment.email || noteData.teacher_email || noteData.email,
+      subscription_status:prior.subscription_status || prior.access_status || (payment.status==='VERIFIED'?'ACTIVE':undefined)
+    });
+  }
+  teacherRecords=[...byId.values()].filter(t => t.user_id);
+  if(teacherResult.error && profileResult.error){
+    showToast('Registered Teachers could not load. Check table access/RLS: '+teacherResult.error.message);
+  }
   renderTeachers();
   saveCachedData();
 }
@@ -2198,12 +2231,8 @@ function renderTeachers(){
     teacherRecords
       .map(teacher => {
 
-        const status =
-          String(
-            teacher.subscription_status ||
-            teacher.status ||
-            'INACTIVE'
-          ).toUpperCase();
+        const matchedSub = subscriptionRecords.find(sub => String(sub.user_id || '') === String(teacher.user_id || teacher.id || '')) || {};
+        const status = String(teacher.subscription_status || teacher.status || teacher.access_status || matchedSub.status || 'REGISTERED').toUpperCase();
 
 
         return `
@@ -2235,14 +2264,13 @@ function renderTeachers(){
 
             <td>
               ${escapeHtml(
-                teacher.subscription_status ||
-                '—'
+                matchedSub.plan_name || teacher.plan_name || '—'
               )}
             </td>
 
             <td>
               ${formatDate(
-                teacher.subscription_expiry
+                matchedSub.subscription_expiry || teacher.subscription_expiry || teacher.expiry_date
               )}
             </td>
 
@@ -2260,7 +2288,7 @@ function renderTeachers(){
 ===================================================== */
 
 async function loadSubscriptions(){
-  // Teacher Portal uses public.subscriptions (expiry_date), not teacher_subscriptions.
+  // Match subscriptions to Teacher Portal accounts by auth user id, then enrich from profiles and payments.
   const result = await supabaseClient.from('subscriptions').select('*').order('created_at',{ascending:false}).limit(200);
   if(result.error){
     console.error('Unable to load subscriptions:', result.error.message);
@@ -2268,12 +2296,26 @@ async function loadSubscriptions(){
     renderSubscriptions();
     return;
   }
-  const rows = result.data || [];
-  const profileByUser = new Map(teacherRecords.map(t => [String(t.user_id||''), t]));
-  subscriptionRecords = rows.map(sub => {
-    const profile = profileByUser.get(String(sub.user_id||'')) || {};
-    const payment = paymentRecords.find(p => String(p.user_id||'') === String(sub.user_id||'')) || {};
-    return {...sub, teacher_name: sub.teacher_name || profile.full_name || profile.teacher_name || payment.teacher_name || '—', teacher_email: sub.teacher_email || profile.email || payment.teacher_email || '—', subscription_expiry: sub.subscription_expiry || sub.expiry_date || null};
+  const profileByUser = new Map(teacherRecords.map(t => [String(t.user_id || t.id || ''), t]));
+  const paymentByUser = new Map();
+  for(const p of paymentRecords){
+    const id=String(p.user_id || '');
+    if(id && !paymentByUser.has(id)) paymentByUser.set(id,p);
+  }
+  subscriptionRecords = (result.data || []).map(sub => {
+    const id=String(sub.user_id || sub.id_user || '');
+    const profile=profileByUser.get(id) || {};
+    const payment=paymentByUser.get(id) || {};
+    let noteData={};
+    try{noteData=payment.notes ? JSON.parse(payment.notes) : {};}catch(e){}
+    const expiry=sub.expiry_date || sub.subscription_expiry || sub.expires_at || null;
+    const start=sub.start_date || sub.subscription_start || sub.created_at || null;
+    return {...sub, user_id:id,
+      teacher_name:sub.teacher_name || sub.full_name || profile.full_name || profile.teacher_name || profile.name || noteData.teacher_name || payment.teacher_name || '—',
+      teacher_email:sub.teacher_email || sub.email || profile.email || profile.teacher_email || noteData.teacher_email || payment.teacher_email || payment.email || '—',
+      subscription_start:start,
+      subscription_expiry:expiry
+    };
   });
   renderSubscriptions();
   saveCachedData();
