@@ -196,6 +196,14 @@ body{
   margin:25px auto;
 }
 
+
+/* Live Philippines date and time in the admin header */
+.admin-live-clock{display:flex;flex-direction:column;align-items:flex-end;justify-content:center;min-width:190px;padding:7px 12px;border:1px solid #dbeafe;border-radius:10px;background:#eff6ff;line-height:1.25;font-variant-numeric:tabular-nums}
+.admin-live-clock .clock-label{font-size:10px;font-weight:800;letter-spacing:1.1px;color:#0b5ed7}
+.admin-live-clock .clock-time{font-size:20px;font-weight:900;color:#111827;margin:2px 0}
+.admin-live-clock .clock-date{font-size:12px;font-weight:700;color:#475569}
+@media(max-width:760px){.topbar{height:auto;min-height:70px;gap:12px;flex-wrap:wrap;padding:12px 16px}.admin-area{gap:8px;flex-wrap:wrap;justify-content:flex-end}.admin-live-clock{min-width:165px}.admin-live-clock .clock-time{font-size:17px}.brand h2{font-size:16px}}
+
 /* =========================
    STATS
 ========================= */
@@ -609,6 +617,12 @@ th{
     </div>
 
     <div class="admin-area">
+
+      <div class="admin-live-clock" aria-live="off">
+        <div class="clock-label">TODAY · PHILIPPINES</div>
+        <div class="clock-time" id="adminLiveTime">--:--:--</div>
+        <div class="clock-date" id="adminLiveDate">Loading date…</div>
+      </div>
 
       <span
         class="admin-email"
@@ -1708,7 +1722,17 @@ function renderPayments(){
                       REJECT
                     </button>
                   `
-                  : ''
+                  : status === 'VERIFIED'
+                    ? `
+                      <button
+                        class="btn reject"
+                        onclick="rejectPayment('${payment.id}')"
+                        title="Reject this payment and revoke access if no other verified payment exists"
+                      >
+                        REJECT / REVOKE
+                      </button>
+                    `
+                    : ''
                 }
 
               </div>
@@ -1855,59 +1879,78 @@ async function verifyPayment(id){
 
 async function rejectPayment(id){
 
-  const payment =
-    paymentRecords.find(
-      p =>
-        String(p.id) ===
-        String(id)
-    );
-
+  const payment = paymentRecords.find(p => String(p.id) === String(id));
   if(!payment) return;
 
-  const confirmed =
-    confirm(
-      `Reject payment from ${
-        payment.teacher_name ||
-        payment.teacher_email ||
-        'this teacher'
-      }?`
-    );
-
-  if(!confirmed) return;
-
-
-  const {
-    error
-  } =
-  await paymentSupabaseClient
-    .from('payments')
-    .update({
-      status:'REJECTED'
-    })
-    .eq('id',id);
-
-
-  if(error){
-
-    showToast(
-      'Unable to reject payment: ' +
-      error.message
-    );
-
+  const currentStatus = String(payment.status || 'PENDING').toUpperCase();
+  if(!['PENDING','VERIFIED'].includes(currentStatus)){
+    showToast('This payment is already '+currentStatus+'.');
     return;
   }
 
+  const wasVerified = currentStatus === 'VERIFIED';
+  const teacherLabel = payment.teacher_name || payment.teacher_email || 'this teacher';
+  const warning = wasVerified
+    ? `\n\nWARNING: This payment is already APPROVED. Rejecting it will change its status to REJECTED. If this teacher has no other VERIFIED payment, their subscription will be marked INACTIVE and portal access will be disabled. This does not delete any payment records.`
+    : '\n\nThe payment will be marked REJECTED and will not activate a subscription.';
 
-  showToast(
-    'Payment rejected.'
+  const confirmed = confirm(
+    `${wasVerified ? 'Reject / revoke approval for' : 'Reject payment from'} ${teacherLabel}?${warning}`
   );
+  if(!confirmed) return;
+
+  const {error} = await paymentSupabaseClient
+    .from('payments')
+    .update({status:'REJECTED'})
+    .eq('id',id);
+
+  if(error){
+    showToast('Unable to reject payment: '+error.message);
+    return;
+  }
+
+  // If this was an already-approved payment, only revoke access when no other
+  // VERIFIED payment remains for the same user. Keep all payment history intact.
+  if(wasVerified && payment.user_id){
+    const {data:otherVerified,error:otherError} = await paymentSupabaseClient
+      .from('payments')
+      .select('id')
+      .eq('user_id',payment.user_id)
+      .eq('status','VERIFIED');
+
+    if(otherError){
+      showToast('Payment rejected, but access could not be safely rechecked. Please review this teacher’s subscription manually: '+otherError.message);
+      closePaymentModal();
+      await loadAllData();
+      return;
+    }
+
+    if(!otherVerified || otherVerified.length===0){
+      const {error:subError} = await supabaseClient
+        .from('subscriptions')
+        .update({status:'INACTIVE'})
+        .eq('user_id',payment.user_id);
+      const {error:profileError} = await supabaseClient
+        .from('profiles')
+        .update({access_status:'INACTIVE'})
+        .eq('id',payment.user_id);
+
+      if(subError || profileError){
+        showToast('Payment rejected, but subscription access update needs manual review: '+(subError?.message || profileError?.message));
+        closePaymentModal();
+        await loadAllData();
+        return;
+      }
+    }
+  }
+
+  showToast(wasVerified
+    ? 'Approved payment changed to REJECTED. Subscription access was revoked if no other verified payment exists.'
+    : 'Payment rejected.');
 
   closePaymentModal();
-
   await loadAllData();
-
 }
-
 
 /* =====================================================
    VIEW PAYMENT
@@ -2092,31 +2135,20 @@ async function viewPayment(id){
 
 
   if(status === 'PENDING'){
-
-    verifyBtn.classList.remove(
-      'hidden'
-    );
-
-    rejectBtn.classList.remove(
-      'hidden'
-    );
-
-    verifyBtn.onclick =
-      () => verifyPayment(id);
-
-    rejectBtn.onclick =
-      () => rejectPayment(id);
-
+    verifyBtn.textContent = 'VERIFY PAYMENT';
+    verifyBtn.classList.remove('hidden');
+    rejectBtn.textContent = 'REJECT PAYMENT';
+    rejectBtn.classList.remove('hidden');
+    verifyBtn.onclick = () => verifyPayment(id);
+    rejectBtn.onclick = () => rejectPayment(id);
+  }else if(status === 'VERIFIED'){
+    verifyBtn.classList.add('hidden');
+    rejectBtn.textContent = 'REJECT / REVOKE APPROVAL';
+    rejectBtn.classList.remove('hidden');
+    rejectBtn.onclick = () => rejectPayment(id);
   }else{
-
-    verifyBtn.classList.add(
-      'hidden'
-    );
-
-    rejectBtn.classList.add(
-      'hidden'
-    );
-
+    verifyBtn.classList.add('hidden');
+    rejectBtn.classList.add('hidden');
   }
 
 
@@ -2983,6 +3015,23 @@ if (!window.__teacherPaymentAutoRefreshStarted) {
   }, 15000);
 }
 
+</script>
+
+
+<script>
+(function(){
+  function updateAdminClock(){
+    const now=new Date();
+    const timeEl=document.getElementById('adminLiveTime');
+    const dateEl=document.getElementById('adminLiveDate');
+    if(!timeEl||!dateEl)return;
+    const opts={timeZone:'Asia/Manila',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true};
+    timeEl.textContent=new Intl.DateTimeFormat('en-PH',opts).format(now);
+    dateEl.textContent=new Intl.DateTimeFormat('en-PH',{timeZone:'Asia/Manila',weekday:'long',year:'numeric',month:'long',day:'numeric'}).format(now);
+  }
+  updateAdminClock();
+  setInterval(updateAdminClock,1000);
+})();
 </script>
 
 </body>
