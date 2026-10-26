@@ -776,10 +776,12 @@ th{
               <tr>
                 <th>Teacher</th>
                 <th>Email</th>
-                <th>Method</th>
+                <th>Payment Method</th>
                 <th>Amount</th>
-                <th>Date</th>
+                <th>Reference Number</th>
+                <th>Date Submitted</th>
                 <th>Status</th>
+                <th>Action</th>
               </tr>
 
             </thead>
@@ -788,10 +790,10 @@ th{
 
               <tr>
                 <td
-                  colspan="6"
+                  colspan="8"
                   class="empty"
                 >
-                  No payment submissions yet.
+                  No pending payment submissions.
                 </td>
               </tr>
 
@@ -803,26 +805,6 @@ th{
 
       </div>
 
-
-      <div class="panel">
-
-        <div class="panel-header">
-
-          <h2>
-            Subscription Alerts
-          </h2>
-
-        </div>
-
-        <div id="subscriptionAlerts">
-
-          <div class="empty">
-            No subscription alerts.
-          </div>
-
-        </div>
-
-      </div>
 
     </section>
 
@@ -1371,6 +1353,10 @@ async function adminLogout(){
 
   }
 
+  try{ sessionStorage.removeItem(ADMIN_CACHE_KEY); }catch(e){}
+  paymentRecords=[];
+  teacherRecords=[];
+  subscriptionRecords=[];
   showLogin();
 
 }
@@ -1450,16 +1436,52 @@ function showTabById(tab){
    LOAD ALL DATA
 ===================================================== */
 
-async function loadAllData(){
+const ADMIN_CACHE_KEY = 'admin-management-portal-cache-v1';
 
-  await Promise.all([
+function restoreCachedData(){
+  try{
+    const cached = sessionStorage.getItem(ADMIN_CACHE_KEY);
+    if(!cached) return false;
+    const parsed = JSON.parse(cached);
+    paymentRecords = Array.isArray(parsed.payments) ? parsed.payments : paymentRecords;
+    teacherRecords = Array.isArray(parsed.teachers) ? parsed.teachers : teacherRecords;
+    subscriptionRecords = Array.isArray(parsed.subscriptions) ? parsed.subscriptions : subscriptionRecords;
+    renderPayments();
+    renderTeachers();
+    renderSubscriptions();
+    updateDashboard();
+    return true;
+  }catch(err){
+    console.warn('Unable to restore cached admin data:', err);
+    return false;
+  }
+}
+
+function saveCachedData(){
+  try{
+    // Do not cache payment proof files/screenshots in browser storage.
+    const safePayments = paymentRecords.map(({proof_data, ...payment}) => payment);
+    sessionStorage.setItem(ADMIN_CACHE_KEY, JSON.stringify({
+      payments: safePayments,
+      teachers: teacherRecords,
+      subscriptions: subscriptionRecords,
+      savedAt: Date.now()
+    }));
+  }catch(err){
+    console.warn('Unable to cache admin data:', err);
+  }
+}
+
+async function loadAllData(){
+  // Show the last successful view immediately, then refresh from Supabase.
+  restoreCachedData();
+  await Promise.allSettled([
     loadPayments(),
     loadTeachers(),
     loadSubscriptions()
   ]);
-
   updateDashboard();
-
+  saveCachedData();
 }
 
 
@@ -1482,7 +1504,7 @@ function normalizePaymentRecord(row){
     teacher_name: row?.teacher_name || noteData.teacher_name || noteData.name || row?.email || noteData.email || '—',
     teacher_email: row?.teacher_email || row?.email || noteData.email || '—',
     payment_method: row?.payment_method || '—',
-    amount: row?.amount ?? 99,
+    amount: row?.amount ?? 69,
     reference_number: row?.reference_number || '—',
     created_at: row?.created_at || row?.payment_date || null,
     status: row?.status || 'PENDING',
@@ -1509,15 +1531,16 @@ async function loadPayments(){
 
     console.error('Teacher Portal payments error:',error);
 
-    paymentRecords=[];
+    // Keep the last known records visible if a request temporarily fails.
     renderPayments();
 
-    showToast('Unable to load Teacher Portal payments: ' + error.message);
+    showToast('Unable to refresh payments. Showing the last loaded records.');
     return;
   }
 
   paymentRecords=(data || []).map(normalizePaymentRecord);
   renderPayments();
+  saveCachedData();
 
 }
 
@@ -1535,23 +1558,12 @@ function renderPayments(){
     );
 
   if(!paymentRecords.length){
-
     table.innerHTML=`
-      <tr>
-        <td colspan="8" class="empty">
-          No payment submissions yet.
-        </td>
-      </tr>
+      <tr><td colspan="8" class="empty">No payment submissions yet.</td></tr>
     `;
-
     recent.innerHTML=`
-      <tr>
-        <td colspan="6" class="empty">
-          No payment submissions yet.
-        </td>
-      </tr>
+      <tr><td colspan="8" class="empty">No pending payment submissions.</td></tr>
     `;
-
     return;
   }
 
@@ -1652,60 +1664,27 @@ function renderPayments(){
       .join('');
 
 
-  recent.innerHTML =
-    paymentRecords
-      .slice(0,5)
-      .map(payment => {
+  // Dashboard is an action queue: only payments still awaiting review appear here.
+  const pendingPayments = paymentRecords.filter(payment =>
+    String(payment.status || 'PENDING').toUpperCase() === 'PENDING'
+  );
 
-        const status =
-          String(
-            payment.status || 'PENDING'
-          ).toUpperCase();
-
-        return `
-          <tr>
-
-            <td>
-              ${escapeHtml(
-                payment.teacher_name || '—'
-              )}
-            </td>
-
-            <td>
-              ${escapeHtml(
-                payment.teacher_email || '—'
-              )}
-            </td>
-
-            <td>
-              ${escapeHtml(
-                payment.payment_method || '—'
-              )}
-            </td>
-
-            <td>
-              ₱${escapeHtml(
-                payment.amount || '99'
-              )}
-            </td>
-
-            <td>
-              ${formatDate(
-                payment.created_at
-              )}
-            </td>
-
-            <td>
-              <span class="badge ${statusClass(status)}">
-                ${status}
-              </span>
-            </td>
-
-          </tr>
-        `;
-
-      })
-      .join('');
+  recent.innerHTML = pendingPayments.length
+    ? pendingPayments.slice(0, 10).map(payment => `
+        <tr>
+          <td>${escapeHtml(payment.teacher_name || '—')}</td>
+          <td>${escapeHtml(payment.teacher_email || '—')}</td>
+          <td>${escapeHtml(payment.payment_method || '—')}</td>
+          <td>₱${escapeHtml(payment.amount ?? '69')}</td>
+          <td>${escapeHtml(payment.reference_number || '—')}</td>
+          <td>${formatDate(payment.created_at)}</td>
+          <td><span class="badge pending">PENDING</span></td>
+          <td><div class="action-group">
+            <button class="btn view" onclick="viewPayment('${escapeHtml(payment.id)}')">VIEW DETAILS</button>
+          </div></td>
+        </tr>
+      `).join('')
+    : `<tr><td colspan="8" class="empty">All submitted payments have been reviewed. No pending payments.</td></tr>`;
 
 }
 
@@ -2079,8 +2058,7 @@ async function loadTeachers(){
       error.message
     );
 
-    teacherRecords=[];
-
+    // Preserve the last known list during a temporary Supabase error.
     renderTeachers();
 
     return;
@@ -2090,6 +2068,7 @@ async function loadTeachers(){
   teacherRecords=data || [];
 
   renderTeachers();
+  saveCachedData();
 
 }
 
@@ -2201,8 +2180,7 @@ async function loadSubscriptions(){
       error.message
     );
 
-    subscriptionRecords=[];
-
+    // Preserve the last known list during a temporary Supabase error.
     renderSubscriptions();
 
     return;
@@ -2212,6 +2190,7 @@ async function loadSubscriptions(){
   subscriptionRecords=data || [];
 
   renderSubscriptions();
+  saveCachedData();
 
 }
 
@@ -2376,8 +2355,6 @@ function updateDashboard(){
     expired;
 
 
-  renderSubscriptionAlerts();
-
 }
 
 
@@ -2412,8 +2389,15 @@ function getSubscriptionStatus(
   }
 
 
-  const expiryDate =
-    new Date(expiry);
+  // If Supabase stores a date without a time (YYYY-MM-DD), keep it active
+  // through that calendar day and mark expired after 11:59:59 PM local time.
+  let expiryDate;
+  if(typeof expiry === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expiry)){
+    const [year, month, day] = expiry.split('-').map(Number);
+    expiryDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+  }else{
+    expiryDate = new Date(expiry);
+  }
 
   const now =
     new Date();
@@ -2803,9 +2787,11 @@ supabaseClient.auth.onAuthStateChange(
 
 
     if(event === 'SIGNED_OUT'){
-
+      try{ sessionStorage.removeItem(ADMIN_CACHE_KEY); }catch(e){}
+      paymentRecords=[];
+      teacherRecords=[];
+      subscriptionRecords=[];
       showLogin();
-
     }
 
   }
@@ -2817,6 +2803,25 @@ supabaseClient.auth.onAuthStateChange(
 ===================================================== */
 
 checkAdminSession();
+
+
+
+/* Auto-refresh payment submissions so new teacher requests appear without re-login. */
+if (!window.__teacherPaymentAutoRefreshStarted) {
+  window.__teacherPaymentAutoRefreshStarted = true;
+  window.setInterval(async () => {
+    try {
+      const loginPage = document.getElementById('loginPage');
+      const loginVisible = loginPage && getComputedStyle(loginPage).display !== 'none' && loginPage.offsetParent !== null;
+      if (loginVisible) return;
+      if (typeof paymentSupabaseClient !== 'undefined' && paymentSupabaseClient) {
+        await loadPayments();
+      }
+    } catch (err) {
+      console.warn('Background payment refresh failed:', err);
+    }
+  }, 15000);
+}
 
 </script>
 
