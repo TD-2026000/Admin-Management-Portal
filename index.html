@@ -2038,7 +2038,11 @@ async function restorePaymentAccess(id){
     return;
   }
 
-  const {error:paymentError} = await paymentSupabaseClient.from('payments').update({status:'VERIFIED'}).eq('id',id);
+  let restoredNotes={};
+  try{restoredNotes=payment.notes?(typeof payment.notes==='string'?JSON.parse(payment.notes):payment.notes):{};}catch(e){restoredNotes={previous_notes:String(payment.notes||'')};}
+  restoredNotes.admin_payment_event='RESTORED';
+  restoredNotes.admin_payment_event_at=new Date().toISOString();
+  const {error:paymentError} = await paymentSupabaseClient.from('payments').update({status:'VERIFIED',notes:JSON.stringify(restoredNotes)}).eq('id',id);
   if(paymentError){ showToast('Unable to restore the payment status: '+paymentError.message); return; }
   const {error:subError} = await supabaseClient.from('subscriptions').update({status:'ACTIVE'}).eq('id',sub.id);
   const {error:profileError} = await supabaseClient.from('profiles').update({access_status:'ACTIVE'}).eq('id',payment.user_id);
