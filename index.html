@@ -1726,35 +1726,7 @@ function renderPayments(){
                   VIEW
                 </button>
 
-                ${
-                  status === 'PENDING'
-                  ? `
-                    <button
-                      class="btn verify"
-                      onclick="verifyPayment('${payment.id}')"
-                    >
-                      VERIFY
-                    </button>
-
-                    <button
-                      class="btn reject"
-                      onclick="rejectPayment('${payment.id}')"
-                    >
-                      REJECT
-                    </button>
-                  `
-                  : status === 'VERIFIED'
-                    ? `
-                      <button
-                        class="btn reject"
-                        onclick="rejectPayment('${payment.id}')"
-                        title="Reject this payment; access is disabled only if no other verified payment exists"
-                      >
-                        REJECT
-                      </button>
-                    `
-                    : ''
-                }
+                <!-- All payment decisions are handled inside VIEW DETAILS so the action row never duplicates REVOKE/RESTORE controls. -->
 
 
               </div>
@@ -1970,6 +1942,37 @@ async function rejectPayment(id){
     ? 'Approved payment changed to REJECTED. Subscription access was revoked if no other verified payment exists.'
     : 'Payment rejected.');
 
+  closePaymentModal();
+  await loadAllData();
+}
+
+/* =====================================================
+   UNDO AN ACCIDENTAL REJECTION
+===================================================== */
+
+async function undoRejectedPayment(id){
+  const payment = paymentRecords.find(p => String(p.id) === String(id));
+  if(!payment) return;
+  if(String(payment.status || '').toUpperCase() !== 'REJECTED'){
+    showToast('Only a rejected payment can be restored to pending review.');
+    return;
+  }
+  const teacherLabel = payment.teacher_name || payment.teacher_email || 'this teacher';
+  const confirmed = confirm(
+    'Undo the rejection for '+teacherLabel+'? The original payment record and proof will be kept, and its status will return to PENDING so you can review and approve it again.'
+  );
+  if(!confirmed) return;
+
+  const {error} = await paymentSupabaseClient
+    .from('payments')
+    .update({status:'PENDING'})
+    .eq('id',id)
+    .eq('status','REJECTED');
+  if(error){
+    showToast('Unable to undo rejection: '+error.message);
+    return;
+  }
+  showToast('Rejection undone. Payment is back in PENDING review; open VIEW and verify it if legitimate.');
   closePaymentModal();
   await loadAllData();
 }
@@ -2225,10 +2228,12 @@ async function viewPayment(id){
     ` : ''}
 
     <div class="detail-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-      <strong>Access Action</strong>
+      <strong>Payment Action</strong>
       ${status === 'REVOKED'
         ? `<button class="btn verify" onclick="restorePaymentAccess('${payment.id}')">RESTORE ACCESS</button>`
-        : `<button class="btn reject" onclick="revokePaymentAccess('${payment.id}')" ${status !== 'VERIFIED' ? 'disabled aria-disabled="true"' : ''}>REVOKE APPROVAL</button>`}
+        : status === 'REJECTED'
+          ? `<button class="btn verify" onclick="undoRejectedPayment('${payment.id}')">UNDO REJECTION — RETURN TO PENDING</button>`
+          : `<button class="btn reject" onclick="revokePaymentAccess('${payment.id}')" ${status !== 'VERIFIED' ? 'disabled aria-disabled="true"' : ''}>REVOKE APPROVAL</button>`}
     </div>
 
   `;
