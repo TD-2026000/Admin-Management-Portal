@@ -1727,12 +1727,19 @@ function renderPayments(){
                       <button
                         class="btn reject"
                         onclick="rejectPayment('${payment.id}')"
-                        title="Reject this payment and revoke access if no other verified payment exists"
+                        title="Reject this payment; access is disabled only if no other verified payment exists"
                       >
-                        REJECT / REVOKE
+                        REJECT
                       </button>
                     `
                     : ''
+                }
+
+                ${status === 'REVOKED' ? `
+                  <button class="btn verify" onclick="restorePaymentAccess('${payment.id}')" title="Restore access using this payment's remaining subscription time">RESTORE ACCESS</button>
+                ` : `
+                  <button class="btn reject" onclick="revokePaymentAccess('${payment.id}')" title="Revoke this payment approval. Available at all times; enabled only for approved payments" ${status !== 'VERIFIED' ? 'disabled aria-disabled="true"' : ''}>REVOKE</button>
+                `}
                 }
 
               </div>
@@ -1951,6 +1958,82 @@ async function rejectPayment(id){
   closePaymentModal();
   await loadAllData();
 }
+
+/* =====================================================
+   REVOKE / RESTORE PAYMENT ACCESS
+===================================================== */
+
+async function revokePaymentAccess(id){
+  const payment = paymentRecords.find(p => String(p.id) === String(id));
+  if(!payment) return;
+  const status = String(payment.status || 'PENDING').toUpperCase();
+  if(status !== 'VERIFIED'){
+    showToast('Revoke is available only for an approved payment. Current status: '+status+'.');
+    return;
+  }
+  const teacherLabel = payment.teacher_name || payment.teacher_email || 'this teacher';
+  if(!confirm('Revoke the approval for '+teacherLabel+'? The payment record will be kept. If no other verified payment exists, subscription access will be disabled.')) return;
+
+  const {error} = await paymentSupabaseClient.from('payments').update({status:'REVOKED'}).eq('id',id);
+  if(error){ showToast('Unable to revoke approval: '+error.message); return; }
+
+  if(payment.user_id){
+    const {data:otherVerified,error:otherError} = await paymentSupabaseClient
+      .from('payments').select('id').eq('user_id',payment.user_id).eq('status','VERIFIED');
+    if(otherError){
+      showToast('Approval was revoked, but access could not be safely rechecked. Please review the subscription manually: '+otherError.message);
+      await loadAllData();
+      return;
+    }
+    if(!otherVerified || otherVerified.length===0){
+      const {error:subError} = await supabaseClient.from('subscriptions').update({status:'INACTIVE'}).eq('user_id',payment.user_id);
+      const {error:profileError} = await supabaseClient.from('profiles').update({access_status:'INACTIVE'}).eq('id',payment.user_id);
+      if(subError || profileError){
+        showToast('Approval revoked, but subscription access needs manual review: '+(subError?.message || profileError?.message));
+        await loadAllData();
+        return;
+      }
+    }
+  }
+  showToast('Payment approval revoked. Payment history was preserved.');
+  closePaymentModal();
+  await loadAllData();
+}
+
+async function restorePaymentAccess(id){
+  const payment = paymentRecords.find(p => String(p.id) === String(id));
+  if(!payment) return;
+  if(String(payment.status || '').toUpperCase() !== 'REVOKED'){
+    showToast('Only a revoked payment can be restored.');
+    return;
+  }
+  if(!payment.user_id){ showToast('Cannot restore access because this payment has no linked teacher account.'); return; }
+  if(!confirm('Restore access for '+(payment.teacher_name || payment.teacher_email || 'this teacher')+' using the remaining time on the existing subscription?')) return;
+
+  const {data:sub,error:readError} = await supabaseClient.from('subscriptions')
+    .select('id,expiry_date').eq('user_id',payment.user_id)
+    .order('created_at',{ascending:false}).limit(1).maybeSingle();
+  if(readError){ showToast('Unable to check the existing subscription: '+readError.message); return; }
+  const expiry = sub?.expiry_date ? new Date(sub.expiry_date) : null;
+  if(!sub || !expiry || Number.isNaN(expiry.getTime()) || expiry <= new Date()){
+    showToast('The subscription period has expired or is unavailable. A new verified payment is required before access can be restored.');
+    return;
+  }
+
+  const {error:paymentError} = await paymentSupabaseClient.from('payments').update({status:'VERIFIED'}).eq('id',id);
+  if(paymentError){ showToast('Unable to restore the payment status: '+paymentError.message); return; }
+  const {error:subError} = await supabaseClient.from('subscriptions').update({status:'ACTIVE'}).eq('id',sub.id);
+  const {error:profileError} = await supabaseClient.from('profiles').update({access_status:'ACTIVE'}).eq('id',payment.user_id);
+  if(subError || profileError){
+    showToast('Payment was restored, but access updates need manual review: '+(subError?.message || profileError?.message));
+    await loadAllData();
+    return;
+  }
+  showToast('Access restored using the remaining subscription time.');
+  closePaymentModal();
+  await loadAllData();
+}
+
 
 /* =====================================================
    VIEW PAYMENT
