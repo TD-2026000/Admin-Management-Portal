@@ -1514,8 +1514,8 @@ async function loadAllData(){
   // Show the last successful view immediately, then refresh from Supabase.
   restoreCachedData();
   // Load in dependency order so teacher identity matching can use freshly loaded payments and profiles.
-  await loadPayments();
   await loadTeachers();
+  await loadPayments();
   await loadSubscriptions();
   updateDashboard();
   saveCachedData();
@@ -1531,7 +1531,7 @@ function normalizePaymentRecord(row){
   let noteData={};
 
   try{
-    noteData = row && row.notes ? JSON.parse(row.notes) : {};
+    noteData = row && row.notes ? (typeof row.notes === 'string' ? JSON.parse(row.notes) : row.notes) : {};
   }catch(e){
     noteData = {note:String(row?.notes || '')};
   }
@@ -1543,7 +1543,7 @@ function normalizePaymentRecord(row){
     payment_method: row?.payment_method || '—',
     amount: row?.amount ?? 69,
     reference_number: row?.reference_number || '—',
-    submission_number: String(row?.submission_number || noteData.submission_number || noteData.submissionNumber || noteData.submission_no || '—'),
+    submission_number: String(row?.submission_number || row?.submission_no || row?.payment_submission_number || row?.submission_id || row?.submission_code || noteData.submission_number || noteData.submissionNumber || noteData.submission_no || noteData.payment_submission_number || noteData.submission_id || noteData.submission_code || '—'),
     created_at: row?.created_at || row?.payment_date || null,
     status: row?.status || 'PENDING',
     proof_name: row?.proof_name || noteData.proof_name || '',
@@ -1591,6 +1591,18 @@ async function loadPayments(){
 
   const fetched = (data || []).map(normalizePaymentRecord);
   if(fetched.length > 0){
+    // Submission number is optional across older deployments; fetch it separately.
+    const ids=fetched.map(p=>p.id).filter(Boolean);
+    if(ids.length){
+      let submissionResult=await paymentSupabaseClient.from('payments').select('id,submission_number').in('id',ids);
+      if(submissionResult.error){
+        submissionResult=await paymentSupabaseClient.from('payments').select('id,submission_no').in('id',ids);
+      }
+      if(!submissionResult.error && submissionResult.data){
+        const submissionMap=new Map(submissionResult.data.map(r=>[String(r.id),r.submission_number || r.submission_no || '—']));
+        for(const p of fetched){ if(submissionMap.has(String(p.id)) && submissionMap.get(String(p.id))!=='—') p.submission_number=String(submissionMap.get(String(p.id))); }
+      }
+    }
     paymentRecords = fetched;
     renderPayments();
     saveCachedData();
@@ -1612,6 +1624,15 @@ async function loadPayments(){
 
 
 function renderPayments(){
+
+  // Resolve missing teacher identity from loaded profile records before rendering.
+  for(const payment of paymentRecords){
+    const profile=teacherRecords.find(t=>String(t.user_id||t.id||'')===String(payment.user_id||''));
+    if(profile){
+      if(!payment.teacher_name || payment.teacher_name==='—' || payment.teacher_name===payment.user_id) payment.teacher_name=profile.full_name || profile.teacher_name || profile.name || '—';
+      if(!payment.teacher_email || payment.teacher_email==='—') payment.teacher_email=profile.email || profile.teacher_email || '—';
+    }
+  }
 
   const table =
     document.getElementById(
@@ -1735,12 +1756,6 @@ function renderPayments(){
                     : ''
                 }
 
-                ${status === 'REVOKED' ? `
-                  <button class="btn verify" onclick="restorePaymentAccess('${payment.id}')" title="Restore access using this payment's remaining subscription time">RESTORE ACCESS</button>
-                ` : `
-                  <button class="btn reject" onclick="revokePaymentAccess('${payment.id}')" title="Revoke this payment approval. Available at all times; enabled only for approved payments" ${status !== 'VERIFIED' ? 'disabled aria-disabled="true"' : ''}>REVOKE</button>
-                `}
-                }
 
               </div>
 
@@ -2054,18 +2069,19 @@ async function viewPayment(id){
   // the admin opens details so the main payment list stays lightweight.
   try{
     const detailResult = await paymentSupabaseClient.from('payments')
-      .select('id,user_id,notes,teacher_name,teacher_email,email,proof_data,proof_name,payment_note')
+      .select('*')
       .eq('id',id).maybeSingle();
     if(!detailResult.error && detailResult.data){
       const row=detailResult.data;
       let noteData={};
-      try{noteData=row.notes ? JSON.parse(row.notes) : {};}catch(e){noteData={note:String(row.notes||'')};}
+      try{noteData=row.notes ? (typeof row.notes === 'string' ? JSON.parse(row.notes) : row.notes) : {};}catch(e){noteData={note:String(row.notes||'')};}
       Object.assign(payment,{
         teacher_name:row.teacher_name || noteData.teacher_name || noteData.name || payment.teacher_name,
         teacher_email:row.teacher_email || row.email || noteData.email || payment.teacher_email,
-        proof_data:row.proof_data || noteData.proof_data || noteData.proof || '',
-        proof_name:row.proof_name || noteData.proof_name || noteData.file_name || '',
-        payment_note:row.payment_note || noteData.note || payment.payment_note || ''
+        submission_number:String(row.submission_number || row.submission_no || noteData.submission_number || noteData.submissionNumber || noteData.submission_no || payment.submission_number || '—'),
+        proof_data:row.proof_data || row.payment_proof || row.payment_proof_url || row.proof_url || row.proof_image_url || row.proof_image || row.proof_image_data || row.screenshot_url || row.receipt_image || noteData.proof_data || noteData.payment_proof || noteData.payment_proof_url || noteData.proof || noteData.proof_url || noteData.proof_image_url || noteData.proof_image || noteData.proof_image_data || noteData.screenshot || noteData.receipt_image || '',
+        proof_name:row.proof_name || row.payment_proof_name || row.proof_filename || row.payment_proof_filename || noteData.proof_name || noteData.file_name || noteData.proof_filename || noteData.payment_proof_filename || '',
+        payment_note:row.payment_note || noteData.payment_note || noteData.note || payment.payment_note || ''
       });
     }else if(detailResult.error){
       console.warn('Could not load payment proof details:',detailResult.error.message);
@@ -2142,6 +2158,11 @@ async function viewPayment(id){
 
 
     <div class="detail-row">
+      <strong>Submission Number</strong>
+      ${escapeHtml(payment.submission_number || '—')}
+    </div>
+
+    <div class="detail-row">
 
       <strong>
         Reference Number
@@ -2186,11 +2207,11 @@ async function viewPayment(id){
       </strong>
 
       ${payment.proof_data
-        ? (String(payment.proof_name || '').toLowerCase().endsWith('.pdf')
+        ? ((String(payment.proof_name || '').toLowerCase().endsWith('.pdf') || String(payment.proof_data).toLowerCase().includes('.pdf'))
           ? `<a href="${escapeHtml(payment.proof_data)}" target="_blank" rel="noopener">VIEW PDF PROOF</a>`
-          : String(payment.proof_data).startsWith('data:image/')
-            ? `<img src="${escapeHtml(payment.proof_data)}" alt="Payment proof" style="max-width:100%;max-height:420px;border:1px solid #ddd;border-radius:10px;display:block;margin-top:8px;">`
-            : `<span>Proof uploaded: ${escapeHtml(payment.proof_name || 'file')}</span>`
+          : (String(payment.proof_data).startsWith('data:image/') || (/^https?:\/\//i.test(String(payment.proof_data)) && /\.(png|jpe?g|gif|webp)(\?|#|$)/i.test(String(payment.proof_data))))
+            ? `<img src="${escapeHtml(payment.proof_data)}" alt="Payment proof" style="max-width:100%;max-height:420px;border:1px solid #ddd;border-radius:10px;display:block;margin-top:8px;object-fit:contain;">`
+            : `<span>Proof uploaded: ${escapeHtml(payment.proof_name || 'file')}. If this is a private Storage path, a public/signed URL or the proof column value is required to display it.</span>`
         )
         : 'No proof attached'}
 
@@ -2202,6 +2223,13 @@ async function viewPayment(id){
         ${escapeHtml(payment.payment_note)}
       </div>
     ` : ''}
+
+    <div class="detail-row" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <strong>Access Action</strong>
+      ${status === 'REVOKED'
+        ? `<button class="btn verify" onclick="restorePaymentAccess('${payment.id}')">RESTORE ACCESS</button>`
+        : `<button class="btn reject" onclick="revokePaymentAccess('${payment.id}')" ${status !== 'VERIFIED' ? 'disabled aria-disabled="true"' : ''}>REVOKE APPROVAL</button>`}
+    </div>
 
   `;
 
@@ -2432,6 +2460,22 @@ async function loadSubscriptions(){
       subscription_expiry:expiry
     };
   });
+  // If a verified payment exists but its subscription row is missing/unreadable, show a clearly marked fallback row instead of hiding the newly approved teacher.
+  const knownUsers=new Set(subscriptionRecords.map(sub=>String(sub.user_id||'')));
+  const latestVerifiedByUser=new Map();
+  for(const payment of paymentRecords){
+    const id=String(payment.user_id||'');
+    if(!id || String(payment.status||'').toUpperCase()!=='VERIFIED') continue;
+    const existing=latestVerifiedByUser.get(id);
+    if(!existing || new Date(payment.created_at||0)>new Date(existing.created_at||0)) latestVerifiedByUser.set(id,payment);
+  }
+  for(const [id,payment] of latestVerifiedByUser){
+    if(knownUsers.has(id)) continue;
+    const profile=profileByUser.get(id)||{};
+    const start=payment.created_at || new Date().toISOString();
+    const expiryDate=new Date(start); expiryDate.setMonth(expiryDate.getMonth()+1);
+    subscriptionRecords.push({id:'payment-fallback-'+String(payment.id),user_id:id,teacher_name:profile.full_name||profile.teacher_name||payment.teacher_name||'—',teacher_email:profile.email||payment.teacher_email||'—',status:'ACTIVE',plan_name:'Monthly Subscription (payment fallback)',subscription_start:start,subscription_expiry:expiryDate.toISOString(),fallback_from_payment:true});
+  }
   renderSubscriptions();
   saveCachedData();
 }
